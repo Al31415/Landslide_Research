@@ -6,7 +6,7 @@ This repository contains data from CMIP6 (CESM2), NOAA, SSURGO, and USGS and eva
 ```
 modular_feature_analysis/
 ├── data                     # Folder that hosts our data (.nc files are too large, can be downloaded from https://cds.climate.copernicus.eu/datasets/projections-cmip6?tab=overview)
-├── data_collection          # Folder that host scripts to collect the Meteostat (Weather Station Data), USGS (DEM Data), SSURGO (Soil Property Data), and CMIP6 (Climate Data)
+├── data_collection          # Folder that host scripts to collect the Meteostat (Weather Station Data), USGS (DEM Data), SSURGO (Soil Property Data), and CMIP6 data (Climate Data)
 ├── __init__.py              # Package initialization
 ├── data_loader.py           # Data loading and preparation
 ├── feature_selector.py      # Feature selection using SelectFromModel
@@ -193,5 +193,6 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
 
 
