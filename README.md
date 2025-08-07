@@ -130,7 +130,7 @@ rankings = results['rankings']
 model_eval = results['model_evaluation']
 ```
 
-## 📈 Weighted Mean Rank Methodology
+## Weighted Mean Rank Methodology
 
 To evaluate the importance of features given the variance of feature importances for different models, we use a weighted mean rank approach:
 
@@ -148,7 +148,7 @@ Rank	Feature	Score	Selected (⁶)	Source
 7	Slope class	0.68	3	SSURGO
 8	90-d precip.	0.45	3	Meteostat _prcp
 
-## 📋 Output Files
+## Output Files
 
 The analysis generates several output files in the `analysis_results/` folder:
 
@@ -183,7 +183,7 @@ The complete pipeline consists of 6 steps:
 5. **Feature Ranking**: Apply weighted mean rank methodology
 6. **Visualization**: Create comprehensive plots (optional)
 
-## 🛠️ Requirements
+## Requirements
 
 - Python 3.7+
 - pandas >= 1.3.0
@@ -191,3 +191,4 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
