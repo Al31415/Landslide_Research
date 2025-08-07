@@ -1,5 +1,5 @@
 # Landslide Research Analysis 
-This repository contains data from CMIP6 (CESM2), NOAA, SSURGO, and USGS and evaluates how different feature sets 
+This repository houses datasets from CMIP6 (CESM2), NOAA, SSURGO, and USGS. It benchmarks models for landslide prediction, identifies the most influential features, and uses the top-performing models to project how landslide risk will evolve as climate-driven changes in precipitation intensify.
 
 ## Package Structure
 
@@ -150,6 +150,19 @@ Rank	Feature	Score	Selected (⁶)	Source
 7	Slope class	0.68	3	SSURGO
 8	90-d precip.	0.45	3	Meteostat _prcp
 
+## Model Results (Weighted F1 Scores) 
+Model	Dataset_A	Dataset_B
+Random Forest	0.9127 ± 0.0106	0.9237 ± 0.0139
+Gradient Boosting	0.9081 ± 0.0173	0.9214 ± 0.0096
+AdaBoost	0.8970 ± 0.0152	0.9181 ± 0.0099
+Logistic Regression	0.8065 ± 0.0129	0.8317 ± 0.0223
+Ridge Classifier	0.7876 ± 0.0173	0.8328 ± 0.0243
+Linear DA	0.7942 ± 0.0182	0.7754 ± 0.0320
+
+The top performing model is the Random Forest with Gradient Boosting trailing not far behind. 
+
+## CMIP Forecast Conclusions 
+Performing inference on this model with CMIP forecasts gives us a trend where with a median annual increase in precipitation of approximately 40 percent, stable slopes with already boreline unstable characteristics are predicted to become unstable. All locations that flip in stability, flip due to increases in precipitation (increases by 12.6, 18.3, 18.6, 19.3, 20.9, 22.3, 22.8, 23.1, 24.7, 42.3, 48.4, 59.8, 61.5, 69.8, 72.0, 72.5, 79.4, 83.9, 133.8 percent), except for one. At  39.3766, -87.1189, we see that a decrease in precipitation actually causes the location to flip. This feature has a high slope, high bulk density, and low saturated hydraulic conductivity. From this information, one can infer that the soil may be a dense clay that under low long term precipitation conditions forms desiccation cracks that lead to instability when precipitation does occur. 
 ## Output Files
 
 The analysis generates several output files in the `analysis_results/` folder:
@@ -193,6 +206,7 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
 
 
 
