@@ -132,8 +132,18 @@ results = run_complete_analysis(
 rankings = results['rankings']
 model_eval = results['model_evaluation']
 ```
+##  Supported Models
 
-## Weighted Mean Rank Methodology
+The package evaluates multiple machine learning models but any scikit-learn model can be easily swapped in:
+
+1. **Logistic Regression** (`logistic`)
+2. **Random Forest** (`rf`)
+3. **Gradient Boosting** (`gb`)
+4. **Ridge Classifier** (`ridge`)
+5. **Linear Discriminant Analysis** (`lda`)
+6. **AdaBoost** (`ada`)
+
+### Weighted Mean Rank Methodology
 
 To evaluate the importance of features given the variance of feature importances for different models, we use a weighted mean rank approach:
 
@@ -184,16 +194,6 @@ The analysis generates several output files in the `analysis_results/` folder:
 - `rf_a_importances.csv`: RandomForest importances for dataset A
 - `rf_b_importances.csv`: RandomForest importances for dataset B
 
-##  Supported Models
-
-The package evaluates multiple machine learning models but any scikit-learn model can be easily swapped in:
-
-1. **Logistic Regression** (`logistic`)
-2. **Random Forest** (`rf`)
-3. **Gradient Boosting** (`gb`)
-4. **Ridge Classifier** (`ridge`)
-5. **Linear Discriminant Analysis** (`lda`)
-6. **AdaBoost** (`ada`)
 
 ##  Analysis Pipeline
 
@@ -214,6 +214,7 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
 
 
 
