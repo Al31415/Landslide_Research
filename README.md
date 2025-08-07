@@ -1,8 +1,7 @@
-# Modular Feature Analysis Package
+# Landslide Research Analysis 
+This repository contains data from CMIP6 (CESM2), NOAA, SSURGO, and USGS and evaluates how different feature sets 
 
-A comprehensive, modular Python package for feature analysis and selection using weighted mean rank methodology.
-
-## 📁 Package Structure
+## Package Structure
 
 ```
 modular_feature_analysis/
@@ -17,7 +16,7 @@ modular_feature_analysis/
 └── README.md               # This file
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -46,7 +45,7 @@ This will:
 - Create visualizations
 - Save results to `analysis_results/` folder
 
-## 📊 Modules Overview
+## Modules Overview
 
 ### 1. Data Loader (`data_loader.py`)
 - **Purpose**: Load and prepare datasets
@@ -91,7 +90,7 @@ This will:
   - `save_results()`: Save results to files
   - `print_summary()`: Print analysis summary
 
-## 🔧 Advanced Usage
+## Advanced Usage
 
 ### Running Individual Modules
 
@@ -133,28 +132,28 @@ model_eval = results['model_evaluation']
 
 ## 📈 Weighted Mean Rank Methodology
 
-The package implements a sophisticated weighted mean rank approach:
+To evaluate the importance of features given the variance of feature importances for different models, we use a weighted mean rank approach:
 
 ### Formula
 **Weighted Mean Rank = Σ(model_weight × feature_rank) / Σ(model_weights)**
 
-Where:
-- `model_weight = CV_score / sum(CV_scores)` (normalized CV score)
-- `feature_rank` = position of feature in model's ranking (1 = best)
-- **Lower rank values indicate better feature performance**
-
-### Benefits
-- ✅ More intuitive: Lower rank = better feature
-- ✅ Balanced weighting: Uses actual model performance
-- ✅ Handles missing features: Assigns worst rank if not selected
-- ✅ Robust ranking: Considers all models equally
+Results:
+Rank	Feature	Score	Selected (⁶)	Source
+1	Slope (USGS DEM)	1.00	3	DEM
+2	30-d mean precip.	0.98	5	Meteostat _prcp
+3	1-d max precip.	0.75	3	Meteostat _prcp
+4	365-d mean precip.	0.73	4	Meteostat _prcp
+5	90-d precip.	0.71	4	CESM2 _mean_flux
+6	Deepest soil-horizon	0.69	5	SSURGO
+7	Slope class	0.68	3	SSURGO
+8	90-d precip.	0.45	3	Meteostat _prcp
 
 ## 📋 Output Files
 
 The analysis generates several output files in the `analysis_results/` folder:
 
-- `no_nans_ranking.csv`: Feature rankings for dataset with no NaNs
-- `optimal_ranking.csv`: Feature rankings for optimal dataset
+- `no_nans_ranking.csv`: Feature rankings for dataset with no NaNs (dataset A)
+- `optimal_ranking.csv`: Feature rankings for optimal dataset (dataset with more features, dataset B)
 - `dataset_a_optimized.csv`: Optimized dataset A
 - `dataset_b_optimized.csv`: Optimized dataset B
 - `gb_a_importances.csv`: GradientBoosting importances for dataset A
@@ -162,9 +161,9 @@ The analysis generates several output files in the `analysis_results/` folder:
 - `rf_a_importances.csv`: RandomForest importances for dataset A
 - `rf_b_importances.csv`: RandomForest importances for dataset B
 
-## 🎯 Supported Models
+##  Supported Models
 
-The package evaluates multiple machine learning models:
+The package evaluates multiple machine learning models but any scikit-learn model can be easily swapped in:
 
 1. **Logistic Regression** (`logistic`)
 2. **Random Forest** (`rf`)
@@ -173,11 +172,11 @@ The package evaluates multiple machine learning models:
 5. **Linear Discriminant Analysis** (`lda`)
 6. **AdaBoost** (`ada`)
 
-## 🔍 Analysis Pipeline
+##  Analysis Pipeline
 
 The complete pipeline consists of 6 steps:
 
-1. **Data Loading & Preparation**: Load data and create two datasets
+1. **Data Loading & Preparation**: Load data and create two datasets (One with more features and less rows (from deleting rows will null values), and the other with less features but more rows)
 2. **Feature Selection**: Optimize datasets using SelectFromModel
 3. **Basic Model Training**: Train GB and RF models
 4. **Comprehensive Evaluation**: Evaluate all models with cross-validation
@@ -192,49 +191,3 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
-
-## 📝 Example Output
-
-```
-================================================================================
-MODULAR FEATURE ANALYSIS PIPELINE
-================================================================================
-
-==================================================
-STEP 1: DATA LOADING AND PREPARATION
-==================================================
-✓ Datasets prepared successfully
-  - Original shape: (1089, 56)
-  - No NaNs shape: (1089, 39)
-  - Optimal shape: (728, 50)
-
-==================================================
-STEP 2: FEATURE SELECTION
-==================================================
-✓ Datasets optimized successfully
-  - Dataset A optimal shape: (1089, 7)
-  - Dataset B optimal shape: (728, 9)
-  - Common features: 4
-
-...
-
-TOP 5 FEATURES - DATASET WITH NO NANS:
-  1. Slope From USGS Elevation Data (rank: 1.2345)
-  2. Bulk Density (rank: 2.3456)
-  3. Deepest Soil Horizon Layer (rank: 3.4567)
-  4. avg_365_day_prcp_mean_flux (rank: 4.5678)
-  5. pH (rank: 5.6789)
-```
-
-## 🤝 Contributing
-
-To extend the package:
-
-1. Add new functionality to appropriate modules
-2. Update the main orchestrator if needed
-3. Add tests for new functions
-4. Update documentation
-
-## 📄 License
-
-This package is provided as-is for educational and research purposes. 
