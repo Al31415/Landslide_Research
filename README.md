@@ -140,26 +140,30 @@ To evaluate the importance of features given the variance of feature importances
 **Weighted Mean Rank = Σ(model_weight × feature_rank) / Σ(model_weights)**
 
 Feature Importance
-Rank	Feature	Score	Selected ¹	Data Source
-1	Slope (USGS DEM)	1.00	3	DEM
-2	30-day mean precipitation	0.98	5	Meteostat _prcp
-3	1-day max precipitation	0.75	3	Meteostat _prcp
-4	365-day mean precipitation	0.73	4	Meteostat _prcp
-5	90-day precipitation	0.71	4	CESM2 _mean_flux
-6	Deepest soil horizon	0.69	5	SSURGO
-7	Slope class	0.68	3	SSURGO
-8	90-day precipitation	0.45	3	Meteostat _prcp
+| Rank | Feature                    |    Score | Selected ¹ | Data Source        |
+| ---- | -------------------------- | -------: | ---------: | ------------------ |
+| 1    | Slope (USGS DEM)           | **1.00** |          3 | DEM                |
+| 2    | 30-day mean precipitation  |     0.98 |          5 | Meteostat `_prcp`  |
+| 3    | 1-day max precipitation    |     0.75 |          3 | Meteostat `_prcp`  |
+| 4    | 365-day mean precipitation |     0.73 |          4 | Meteostat `_prcp`  |
+| 5    | 90-day precipitation       |     0.71 |          4 | CESM2 `_mean_flux` |
+| 6    | Deepest soil horizon       |     0.69 |          5 | SSURGO             |
+| 7    | Slope class                |     0.68 |          3 | SSURGO             |
+| 8    | 90-day precipitation       |     0.45 |          3 | Meteostat `_prcp`  |
 
-¹ Number of cross-validation folds (out of 6) in which the feature was selected.
+
+¹ Number of models (out of 6) in which the feature was selected when using SelectFromModel.
 
 ### Model Performance (Weighted F₁)
-Model	Dataset A	Dataset B
-Random Forest	0.9127 ± 0.0106	0.9237 ± 0.0139
-Gradient Boosting	0.9081 ± 0.0173	0.9214 ± 0.0096
-AdaBoost	0.8970 ± 0.0152	0.9181 ± 0.0099
-Logistic Regression	0.8065 ± 0.0129	0.8317 ± 0.0223
-Ridge Classifier	0.7876 ± 0.0173	0.8328 ± 0.0243
-Linear Discriminant Analysis	0.7942 ± 0.0182	0.7754 ± 0.0320
+| Model                        |           Dataset A |           Dataset B |
+| ---------------------------- | ------------------: | ------------------: |
+| **Random Forest**            | **0.9127 ± 0.0106** | **0.9237 ± 0.0139** |
+| Gradient Boosting            |     0.9081 ± 0.0173 |     0.9214 ± 0.0096 |
+| AdaBoost                     |     0.8970 ± 0.0152 |     0.9181 ± 0.0099 |
+| Logistic Regression          |     0.8065 ± 0.0129 |     0.8317 ± 0.0223 |
+| Ridge Classifier             |     0.7876 ± 0.0173 |     0.8328 ± 0.0243 |
+| Linear Discriminant Analysis |     0.7942 ± 0.0182 |     0.7754 ± 0.0320 |
+
 
 
 The top performing model is the Random Forest with Gradient Boosting trailing not far behind. 
@@ -209,6 +213,7 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
 
 
 
