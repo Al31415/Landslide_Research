@@ -179,7 +179,7 @@ Feature Importance
 
 The top performing model is the Random Forest with Gradient Boosting trailing not far behind. 
 
-## CMIP Forecast Conclusions 
+### CMIP Forecast Conclusions 
 Performing inference on this model with CMIP forecasts gives us a trend where with a median annual increase in precipitation of approximately 40 percent, stable slopes with already boreline unstable characteristics are predicted to become unstable. All locations that flip in stability, flip due to increases in precipitation (increases by 12.6, 18.3, 18.6, 19.3, 20.9, 22.3, 22.8, 23.1, 24.7, 42.3, 48.4, 59.8, 61.5, 69.8, 72.0, 72.5, 79.4, 83.9, 133.8 percent), except for one. At  39.3766, -87.1189, we see that a decrease in precipitation actually causes the location to flip. This feature has a high slope, high bulk density, and low saturated hydraulic conductivity. From this information, one can infer that the soil may be a dense clay that under low long term precipitation conditions forms desiccation cracks that lead to instability when precipitation does occur. 
 ## Output Files
 
@@ -214,6 +214,7 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
 
 
 
