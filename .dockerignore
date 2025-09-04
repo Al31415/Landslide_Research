@@ -1,0 +1,39 @@
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+
+# Virtual envs
+.venv/
+.env/
+venv/
+ENV/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local binaries and caches
+.mamba/
+micromamba.exe
+.cache/
+
+# Data
+DEM_data/
+temp_dem/
+data/*.nc
+# data/*.tif
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Build outputs
+build/
+dist/ 
