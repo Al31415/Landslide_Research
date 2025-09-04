@@ -17,7 +17,7 @@ ENV PROJ_LIB=/usr/share/proj
 WORKDIR /app
 
 COPY data_collection/ ./data_collection/
-COPY model/ ./model/
+COPY models/ ./models/
 
 # Minimal pinned installs to ensure RichDEM and GDAL compatibility
 RUN pip install --upgrade pip --no-cache-dir && \
