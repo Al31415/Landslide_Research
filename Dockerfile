@@ -23,7 +23,8 @@ COPY models/ ./models/
 RUN pip install --upgrade pip --no-cache-dir && \
     pip install --no-cache-dir numpy==1.24.4 && \
     pip install --no-cache-dir GDAL==$(gdal-config --version) && \
-    pip install --no-cache-dir xmltodict>=0.12.0 && \
+    pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 leafmap>=0.15.0 && \
+    pip install --no-cache-dir tqdm>=4.64.0 pydeck>=0.8.0 shap>=0.41.0 scikit-learn>=1.1.0 && \
     pip install --no-cache-dir joblib==1.3.2 streamlit==1.31.0 matplotlib==3.7.3 shapely==2.0.1 scipy==1.10.1 && \
     pip install --no-cache-dir richdem==0.3.4 --no-build-isolation && \
     pip install --no-cache-dir -r data_collection/requirements.txt && \
