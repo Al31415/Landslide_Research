@@ -36,6 +36,7 @@ jobs:
           context: .
           push: true
           file: Dockerfile
+          no-cache: true
           tags: |
             ghcr.io/${{ steps.prep.outputs.owner_repo }}:latest
             ghcr.io/${{ steps.prep.outputs.owner_repo }}:${{ steps.prep.outputs.branch_tag }} 
