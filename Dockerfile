@@ -24,7 +24,7 @@ COPY models/ ./models/
 RUN pip install --upgrade pip --no-cache-dir
 
 # Install core dependencies first
-RUN pip install --no-cache-dir numpy==1.24.4 scipy==1.10.1
+RUN pip install --no-cache-dir numpy>=1.26.0 scipy>=1.11.0
 
 # Install GDAL
 RUN pip install --no-cache-dir GDAL==$(gdal-config --version)
