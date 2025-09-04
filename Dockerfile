@@ -20,16 +20,29 @@ COPY data_collection/ ./data_collection/
 COPY models/ ./models/
 
 # Minimal pinned installs to ensure RichDEM and GDAL compatibility
-RUN pip install --upgrade pip --no-cache-dir && \
-    pip install --no-cache-dir numpy==1.24.4 && \
-    pip install --no-cache-dir GDAL==$(gdal-config --version) && \
-    pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 leafmap>=0.15.0 && \
+# Install Python packages in stages to ensure richdem builds properly
+RUN pip install --upgrade pip --no-cache-dir
+
+# Install core dependencies first
+RUN pip install --no-cache-dir numpy==1.24.4 scipy==1.10.1
+
+# Install GDAL
+RUN pip install --no-cache-dir GDAL==$(gdal-config --version)
+
+# Install richdem with build isolation disabled and proper dependencies
+RUN pip install --no-cache-dir pybind11>=2.10.0
+RUN pip install --no-cache-dir richdem==0.3.4 --no-build-isolation
+
+# Install other dependencies
+RUN pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 && \
     pip install --no-cache-dir tqdm>=4.64.0 pydeck>=0.8.0 shap>=0.41.0 scikit-learn>=1.1.0 && \
-    pip install --no-cache-dir joblib==1.3.2 streamlit==1.31.0 matplotlib==3.7.3 shapely==2.0.1 scipy==1.10.1 && \
-    pip install --no-cache-dir richdem==0.3.4 --no-build-isolation && \
+    pip install --no-cache-dir joblib==1.3.2 streamlit==1.31.0 matplotlib==3.7.3 shapely==2.0.1 && \
+    pip install --no-cache-dir leafmap>=0.15.0 && \
     pip install --no-cache-dir -r data_collection/requirements.txt && \
-    pip cache purge || true && \
-    apt-get purge -y libgdal-dev build-essential python3-dev && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+    pip cache purge || true
+
+# Clean up build dependencies after all packages are installed  
+RUN apt-get purge -y libgdal-dev build-essential python3-dev && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p temp_dem data
 
