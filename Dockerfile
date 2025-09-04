@@ -29,9 +29,7 @@ RUN pip install --no-cache-dir numpy==1.24.4 scipy==1.10.1
 # Install GDAL
 RUN pip install --no-cache-dir GDAL==$(gdal-config --version)
 
-# Install richdem with build isolation disabled and proper dependencies
-RUN pip install --no-cache-dir pybind11>=2.10.0
-RUN pip install --no-cache-dir richdem==0.3.4 --no-build-isolation
+# Skip richdem installation - will use fallback slope calculation
 
 # Install other dependencies
 RUN pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 && \

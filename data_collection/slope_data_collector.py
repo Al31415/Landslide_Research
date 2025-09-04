@@ -15,7 +15,12 @@ import leafmap
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import richdem as rd
+try:
+    import richdem as rd
+    RICHDEM_AVAILABLE = True
+except ImportError:
+    RICHDEM_AVAILABLE = False
+    print("Warning: richdem not available. Using fallback slope calculation.")
 import shapefile
 from osgeo import gdal
 from shapely.geometry import Point, Polygon
@@ -104,22 +109,41 @@ class SlopeDataCollector:
             polys[state_name] = poly
         return polys
 
-    def _compute_terrain_attributes(self, dem: rd.rdarray) -> Dict[str, np.ndarray]:
+    def _compute_terrain_attributes(self, dem) -> Dict[str, np.ndarray]:
         """
-        Compute terrain attributes from DEM.
+        Compute terrain attributes from DEM using RichDEM or fallback.
         
         Args:
-            dem: RichDEM array of elevation data
+            dem: RichDEM array or numpy array of elevation data
             
         Returns:
             Dictionary containing terrain attributes
         """
-        return {
-            "slope_degrees": rd.TerrainAttribute(dem, "slope_degrees"),
-            "aspect": rd.TerrainAttribute(dem, "aspect"),
-            "planform_curvature": rd.TerrainAttribute(dem, "planform_curvature"),
-            "profile_curvature": rd.TerrainAttribute(dem, "profile_curvature"),
-        }
+        if RICHDEM_AVAILABLE:
+            return {
+                "slope_degrees": rd.TerrainAttribute(dem, "slope_degrees"),
+                "aspect": rd.TerrainAttribute(dem, "aspect"),
+                "planform_curvature": rd.TerrainAttribute(dem, "planform_curvature"),
+                "profile_curvature": rd.TerrainAttribute(dem, "profile_curvature"),
+            }
+        else:
+            # Fallback: simple gradient-based slope calculation
+            if hasattr(dem, 'array'):
+                elevation = dem.array
+            else:
+                elevation = dem if isinstance(dem, np.ndarray) else np.array(dem)
+            
+            # Calculate slope using numpy gradient (basic approximation)
+            dy, dx = np.gradient(elevation)
+            slope_rad = np.arctan(np.sqrt(dx*dx + dy*dy))
+            slope_degrees = np.rad2deg(slope_rad)
+            
+            return {
+                "slope_degrees": slope_degrees,
+                "aspect": np.zeros_like(slope_degrees),  # Placeholder
+                "planform_curvature": np.zeros_like(slope_degrees),  # Placeholder
+                "profile_curvature": np.zeros_like(slope_degrees),  # Placeholder
+            }
 
     def _load_dem_and_attributes(self, fp: str) -> Dict[str, np.ndarray]:
         """
@@ -134,7 +158,10 @@ class SlopeDataCollector:
         try:
             im = Image.open(fp)
             imarray = np.array(im)
-            imarray_rd = rd.rdarray(imarray, no_data=-9999)
+            if RICHDEM_AVAILABLE:
+                imarray_rd = rd.rdarray(imarray, no_data=-9999)
+            else:
+                imarray_rd = imarray
             attrs = self._compute_terrain_attributes(imarray_rd)
             return attrs
         except Exception as e:

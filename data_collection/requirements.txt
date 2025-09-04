@@ -13,7 +13,7 @@ netCDF4>=1.6.0
 
 # Terrain/slope data dependencies
 leafmap>=0.15.0
-richdem>=0.3.0
+# richdem>=0.3.0  # Optional - using fallback slope calculation
 pyshp>=2.1.0
 gdal>=3.4.0
 shapely>=1.8.0
