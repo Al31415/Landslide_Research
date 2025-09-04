@@ -376,3 +376,139 @@ if __name__ == "__main__":
             print("No batch data collected")
     except Exception as e:
         print(f"Error in batch collection: {e}") 
+    def get_soil_features_for_point(self, lat: float, lon: float) -> Dict[str, Any]:
+        """
+        Get soil features for a single point using Playground logic.
+        
+        Args:
+            lat: Latitude
+            lon: Longitude
+            
+        Returns:
+            Dictionary with soil features: bulk_density, slope_from_ssurgo, Deepest_Soil_Horizon_Layer
+        """
+        try:
+            # Get soil data for the point
+            soil_df = self.get_soil_data(lat, lon)
+            
+            if soil_df.empty:
+                return {
+                    'bulk_density': 0.0,
+                    'slope_from_ssurgo': 0.0,
+                    'Deepest_Soil_Horizon_Layer': 0.0
+                }
+            
+            # Extract primary properties
+            primary_df = self.extract_primary_soil_properties(soil_df)
+            
+            if primary_df.empty:
+                return {
+                    'bulk_density': 0.0,
+                    'slope_from_ssurgo': 0.0,
+                    'Deepest_Soil_Horizon_Layer': 0.0
+                }
+            
+            # Aggregate soil properties
+            aggregated_df = self.aggregate_soil_properties(primary_df)
+            
+            if aggregated_df.empty:
+                return {
+                    'bulk_density': 0.0,
+                    'slope_from_ssurgo': 0.0,
+                    'Deepest_Soil_Horizon_Layer': 0.0
+                }
+            
+            # Extract features using Playground logic
+            bulk_density = float(aggregated_df.get('bulk_density', 0.0))
+            slope_from_ssurgo = float(aggregated_df.get('slope_r', 0.0))
+            
+            # Get deepest soil horizon layer (hzname mapping)
+            hzname_values = primary_df['hzname'].dropna().tolist() if 'hzname' in primary_df.columns else []
+            deepest_horizon = 0.0
+            if hzname_values:
+                # Use the hzname_to_numeric mapping from FeatureService
+                from feature_service import FeatureService
+                deepest_horizon = float(FeatureService._hzname_to_numeric(pd.Series(hzname_values)).max())
+            
+            return {
+                'bulk_density': bulk_density,
+                'slope_from_ssurgo': slope_from_ssurgo,
+                'Deepest_Soil_Horizon_Layer': deepest_horizon
+            }
+            
+        except Exception as e:
+            print(f"Error getting soil features for point ({lat}, {lon}): {e}")
+            return {
+                'bulk_density': 0.0,
+                'slope_from_ssurgo': 0.0,
+                'Deepest_Soil_Horizon_Layer': 0.0
+            }
+
+
+    def get_soil_features_for_point(self, lat: float, lon: float) -> Dict[str, Any]:
+        """
+        Get soil features for a single point using Playground logic.
+        
+        Args:
+            lat: Latitude
+            lon: Longitude
+            
+        Returns:
+            Dictionary with soil features: bulk_density, slope_from_ssurgo, Deepest_Soil_Horizon_Layer
+        """
+        try:
+            # Get soil data for the point
+            soil_df = self.get_soil_data(lat, lon)
+            
+            if soil_df.empty:
+                return {
+                    "bulk_density": 0.0,
+                    "slope_from_ssurgo": 0.0,
+                    "Deepest_Soil_Horizon_Layer": 0.0
+                }
+            
+            # Extract primary properties
+            primary_df = self.extract_primary_soil_properties(soil_df)
+            
+            if primary_df.empty:
+                return {
+                    "bulk_density": 0.0,
+                    "slope_from_ssurgo": 0.0,
+                    "Deepest_Soil_Horizon_Layer": 0.0
+                }
+            
+            # Aggregate soil properties
+            aggregated_df = self.aggregate_soil_properties(primary_df)
+            
+            if aggregated_df.empty:
+                return {
+                    "bulk_density": 0.0,
+                    "slope_from_ssurgo": 0.0,
+                    "Deepest_Soil_Horizon_Layer": 0.0
+                }
+            
+            # Extract features using Playground logic
+            bulk_density = float(aggregated_df.get("bulk_density", 0.0))
+            slope_from_ssurgo = float(aggregated_df.get("slope_r", 0.0))
+            
+            # Get deepest soil horizon layer (hzname mapping)
+            hzname_values = primary_df["hzname"].dropna().tolist() if "hzname" in primary_df.columns else []
+            deepest_horizon = 0.0
+            if hzname_values:
+                # Use the hzname_to_numeric mapping from FeatureService
+                from feature_service import FeatureService
+                deepest_horizon = float(FeatureService._hzname_to_numeric(pd.Series(hzname_values)).max())
+            
+            return {
+                "bulk_density": bulk_density,
+                "slope_from_ssurgo": slope_from_ssurgo,
+                "Deepest_Soil_Horizon_Layer": deepest_horizon
+            }
+            
+        except Exception as e:
+            print(f"Error getting soil features for point ({lat}, {lon}): {e}")
+            return {
+                "bulk_density": 0.0,
+                "slope_from_ssurgo": 0.0,
+                "Deepest_Soil_Horizon_Layer": 0.0
+            }
