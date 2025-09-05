@@ -348,6 +348,20 @@ class MeteostatDataCollector:
         
         return validation_results
 
+    def get_precipitation_data_playground_logic(self, lat: float, lon: float, event_date: datetime) -> Dict[str, float]:
+        """
+        Get precipitation data using Playground logic (same as get_precipitation_data).
+        
+        Args:
+            lat: Latitude
+            lon: Longitude
+            event_date: Date for which to collect data
+            
+        Returns:
+            Dictionary with precipitation statistics
+        """
+        return self.get_precipitation_data(lat, lon, event_date)
+
 
 def collect_meteostat_data_for_dataset(df: pd.DataFrame,
                                      lat_col: str = 'Latitude',

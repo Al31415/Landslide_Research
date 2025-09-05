@@ -415,6 +415,78 @@ class CMIPDataCollector:
             df.to_csv(output_file, index=False)
             print(f"Saved {scenario} forecast data to {output_file}")
 
+    def compute_mean_flux_features(self, rolling_data: Dict[str, xr.DataArray], 
+                                 lat: float, lon: float, event_date: datetime,
+                                 scenario: str = 'ssp245', windows_days: List[int] = [90, 365]) -> Dict[str, float]:
+        """
+        Compute mean flux features for a specific location and date.
+        
+        Args:
+            rolling_data: Dictionary of rolling precipitation data
+            lat: Latitude
+            lon: Longitude
+            event_date: Event date
+            scenario: Climate scenario to use
+            windows_days: List of window sizes in days
+            
+        Returns:
+            Dictionary with mean flux features
+        """
+        features = {}
+        
+        try:
+            if scenario not in rolling_data:
+                print(f"Scenario {scenario} not found in rolling data")
+                # Return default values
+                for window in windows_days:
+                    features[f'avg_{window}_day_prcp_mean_flux'] = 0.000001
+                return features
+            
+            # Get data for the scenario
+            data = rolling_data[scenario]
+            
+            # Convert longitude to 0-360 range if needed
+            lon360 = lon if lon >= 0 else lon + 360
+            
+            # Extract data at location
+            for window in windows_days:
+                try:
+                    # Interpolate to exact location
+                    point_data = data.sel(
+                        lat=lat, 
+                        lon=lon360, 
+                        method='nearest'
+                    )
+                    
+                    # Find nearest time
+                    time_data = point_data.sel(time=event_date, method='nearest')
+                    
+                    # Extract value and convert to flux units
+                    value = float(time_data.values)
+                    
+                    if np.isnan(value):
+                        value = 0.000001  # Default flux value
+                    else:
+                        # Convert from mm to kg m^-2 s^-1 (approximate conversion)
+                        # Assuming monthly data, convert to flux rate
+                        value = value / (30.44 * 24 * 3600)  # Convert mm/month to kg m^-2 s^-1
+                        if value <= 0:
+                            value = 0.000001
+                    
+                    features[f'avg_{window}_day_prcp_mean_flux'] = value
+                    
+                except Exception as e:
+                    print(f"Error extracting {window}-day flux for {scenario}: {e}")
+                    features[f'avg_{window}_day_prcp_mean_flux'] = 0.000001
+            
+        except Exception as e:
+            print(f"Error computing mean flux features: {e}")
+            # Return default values
+            for window in windows_days:
+                features[f'avg_{window}_day_prcp_mean_flux'] = 0.000001
+        
+        return features
+
 
 def collect_cmip_data_for_dataset(df: pd.DataFrame,
                                 data_dir: str = "data",
