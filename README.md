@@ -1,22 +1,63 @@
 # Landslide Research Analysis 
 This repository houses datasets from CMIP6 (CESM2), NOAA, SSURGO, and USGS. It benchmarks models for landslide prediction, identifies the most influential features, and uses the top-performing models to project how landslide risk will evolve as climate-driven changes in precipitation intensify.
 
+## 🚀 Live Application
+
+The landslide stability prediction application is deployed and accessible at: **https://stability-predictor.fly.dev**
+
+## 🔄 Automated Deployment
+
+This repository uses GitHub Actions for automated deployment to Fly.io. The deployment workflow is triggered automatically when changes are pushed to the `deploy-app` branch.
+
+### Setting up Deployment
+
+1. **Get your Fly.io API Token**:
+   ```bash
+   fly auth token
+   ```
+
+2. **Add the token to GitHub Secrets**:
+   - Go to your repository settings
+   - Navigate to "Secrets and variables" → "Actions"
+   - Add a new repository secret named `FLY_API_TOKEN`
+   - Paste your Fly.io API token as the value
+
+3. **Deploy by pushing to deploy-app branch**:
+   ```bash
+   git checkout deploy-app
+   git push origin deploy-app
+   ```
+
+The workflow will automatically:
+- Build the Docker container
+- Deploy to Fly.io
+- Run health checks
+- Report deployment status
+
+### Manual Deployment
+
+You can also trigger deployment manually from the GitHub Actions tab by running the "Deploy to Fly.io" workflow.
+
 ## Package Structure
 
 ```
-modular_feature_analysis/
-├── Reports                  # Poster Presentation and Conference Paper, paper not submitted as we decided to move forward with a journal paper instead that is in the final stages. 
-├── data                     # Folder that hosts our data (.nc files are too large, can be downloaded from https://cds.climate.copernicus.eu/datasets/projections-cmip6?tab=overview)
-├── data_collection          # Folder that host scripts to collect the Meteostat (Weather Station Data), USGS (DEM Data), SSURGO (Soil Property Data), and CMIP6 data (Climate Data)
-├── __init__.py              # Package initialization
-├── data_loader.py           # Data loading and preparation
-├── feature_selector.py      # Feature selection using SelectFromModel
-├── model_trainer.py         # Model training and evaluation
-├── feature_ranker.py        # Weighted mean rank feature ranking
-├── visualizer.py            # Visualization and plotting
-├── main.py                  # Main orchestration script
-├── requirements.txt         # Package dependencies
-└── README.md               # This file
+Landslide_Research/
+├── .github/workflows/       # GitHub Actions workflows
+│   ├── build-push-docker.yml
+│   └── deploy-fly.yml
+├── Reports/                 # Poster Presentation and Conference Paper
+├── data/                    # Dataset files
+├── data_collection/         # Data collection scripts and web app
+│   ├── app.py              # Streamlit web application
+│   ├── feature_service.py  # Feature computation service
+│   ├── *_data_collector.py # Data collection modules
+│   └── requirements.txt    # App dependencies
+├── models/                  # Trained ML models
+├── scripts/                # Utility scripts
+├── fly.toml                # Fly.io configuration
+├── Dockerfile              # Container configuration
+├── main.py                 # Analysis pipeline
+└── README.md              # This file
 ```
 
 ## Quick Start
