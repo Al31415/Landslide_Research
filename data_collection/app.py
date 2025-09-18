@@ -187,10 +187,10 @@ with col1:
     
     # Handle map clicks for coordinate selection
     if input_method == "📍 Click on Map":
-        st.markdown("**Map Interaction:**")
+        st.markdown("**Interactive Map Selection:**")
         
-        # Use Streamlit's native map for click functionality
-        st.markdown("**Click on the map below to select coordinates:**")
+        # Instructions
+        st.info("🗺️ **Pan and zoom the map below, then use the coordinate inputs to select your exact location!**")
         
         # Create a DataFrame for the current point
         current_point_df = pd.DataFrame({
@@ -198,48 +198,112 @@ with col1:
             'lon': [st.session_state.lon]
         })
         
-        # Create a DataFrame for original data points if available
-        if orig_points is not None and not orig_points.empty:
-            orig_points_df = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-        else:
-            orig_points_df = pd.DataFrame(columns=['lat', 'lon'])
-        
-        # Display the clickable map
-        clicked_data = st.map(
+        # Display the map
+        st.map(
             current_point_df,
             zoom=6,
             use_container_width=True
         )
         
-        # Handle map clicks
-        if clicked_data is not None and not clicked_data.empty:
-            # Get the clicked coordinates
-            clicked_lat = clicked_data.iloc[0]['lat']
-            clicked_lon = clicked_data.iloc[0]['lon']
-            
-            # Update session state
-            st.session_state.lat = clicked_lat
-            st.session_state.lon = clicked_lon
-            
-            st.success(f"📍 Coordinates updated to: {clicked_lat:.6f}, {clicked_lon:.6f}")
-            st.rerun()  # Refresh the page to update the display
+        # Interactive coordinate selection
+        st.markdown("### 📍 Select Coordinates")
+        st.markdown("**Use the map above to find your location, then enter the exact coordinates below:**")
+        
+        col_coord1, col_coord2 = st.columns([1, 1])
+        
+        with col_coord1:
+            selected_lat = st.number_input(
+                "Latitude",
+                value=float(st.session_state.lat),
+                format="%0.6f",
+                key="selected_lat",
+                help="Enter the latitude of your desired location"
+            )
+        
+        with col_coord2:
+            selected_lon = st.number_input(
+                "Longitude", 
+                value=float(st.session_state.lon),
+                format="%0.6f",
+                key="selected_lon",
+                help="Enter the longitude of your desired location"
+            )
+        
+        # Update coordinates button
+        if st.button("📍 Set Location", type="primary"):
+            st.session_state.lat = selected_lat
+            st.session_state.lon = selected_lon
+            st.success(f"✅ Location set to: {selected_lat:.6f}, {selected_lon:.6f}")
+            st.rerun()
+        
+        # Quick location buttons for common landslide-prone areas
+        st.markdown("### 🎯 Quick Location Selection")
+        st.markdown("**Click any button below to instantly set coordinates for these landslide-prone locations:**")
+        
+        col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
+        
+        with col_quick1:
+            if st.button("🏔️ Mount Rainier, WA"):
+                st.session_state.lat = 46.8523
+                st.session_state.lon = -121.7603
+                st.success("📍 Set to Mount Rainier, WA")
+                st.rerun()
+        
+        with col_quick2:
+            if st.button("🌋 Mount St. Helens, WA"):
+                st.session_state.lat = 46.1914
+                st.session_state.lon = -122.1956
+                st.success("📍 Set to Mount St. Helens, WA")
+                st.rerun()
+        
+        with col_quick3:
+            if st.button("🏔️ Yosemite, CA"):
+                st.session_state.lat = 37.8651
+                st.session_state.lon = -119.5383
+                st.success("📍 Set to Yosemite, CA")
+                st.rerun()
+        
+        # Additional quick locations
+        col_quick4, col_quick5, col_quick6 = st.columns([1, 1, 1])
+        
+        with col_quick4:
+            if st.button("🌲 Olympic NP, WA"):
+                st.session_state.lat = 47.8021
+                st.session_state.lon = -123.6044
+                st.success("📍 Set to Olympic National Park, WA")
+                st.rerun()
+        
+        with col_quick5:
+            if st.button("🏔️ Glacier NP, MT"):
+                st.session_state.lat = 48.7596
+                st.session_state.lon = -113.7870
+                st.success("📍 Set to Glacier National Park, MT")
+                st.rerun()
+        
+        with col_quick6:
+            if st.button("🌋 Lassen NP, CA"):
+                st.session_state.lat = 40.4983
+                st.session_state.lon = -121.4209
+                st.success("📍 Set to Lassen National Park, CA")
+                st.rerun()
         
         # Control buttons
-        col_map1, col_map2 = st.columns([1, 1])
+        st.markdown("### 🔧 Map Controls")
+        col_control1, col_control2 = st.columns([1, 1])
         
-        with col_map1:
+        with col_control1:
             if st.button("🔄 Reset to Default"):
                 st.session_state.lat = 37.7749
                 st.session_state.lon = -122.4194
                 st.success("Reset to San Francisco coordinates")
                 st.rerun()
         
-        with col_map2:
+        with col_control2:
             if st.button("📍 Center on Current Point"):
                 st.success(f"Map centered on: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
                 st.rerun()
         
-        st.markdown("💡 **Tip:** Click anywhere on the map above to select those coordinates!")
+        st.markdown("💡 **Tip:** Pan and zoom the map to find your location, then enter the exact coordinates in the input fields above!")
         
         # Also show the pydeck map for reference with data points
         if orig_points is not None and not orig_points.empty:
