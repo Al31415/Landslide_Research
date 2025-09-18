@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import pydeck as pdk
+from streamlit_folium import st_folium
+import folium
 import matplotlib.pyplot as plt
 import os
 import requests
@@ -135,52 +137,67 @@ with col1:
     # Compute button
     run = st.button("🚀 Compute Prediction", type="primary")
 
-    # Single, clean map interface
+    # Single, clean map interface (conditional render per mode)
     st.subheader("Map View")
-    
-    # Create a single, comprehensive map
-    layers = [
-        pdk.Layer(
-            "ScatterplotLayer",
-            data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
-            get_position='[lon, lat]',
-            get_color='[255, 0, 0, 200]',  # Red for selected point
-            get_radius=8000,
-            pickable=True,
-        )
-    ]
-    
-    # Add original data points if available
-    if orig_points is not None and not orig_points.empty:
-        layers.append(
+
+    if input_method != "📍 Click on Map":
+        # Use pydeck for non-click modes (nice visualization, performance)
+        layers = [
             pdk.Layer(
                 "ScatterplotLayer",
-                data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
+                data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
                 get_position='[lon, lat]',
-                get_color='[0, 100, 255, 100]',  # Blue for data points
-                get_radius=2000,
+                get_color='[255, 0, 0, 200]',
+                get_radius=8000,
                 pickable=False,
             )
+        ]
+        if orig_points is not None and not orig_points.empty:
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
+                    get_position='[lon, lat]',
+                    get_color='[0, 100, 255, 100]',
+                    get_radius=2000,
+                    pickable=False,
+                )
+            )
+        map_deck = pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            initial_view_state=pdk.ViewState(
+                latitude=st.session_state.lat,
+                longitude=st.session_state.lon,
+                zoom=6 if orig_points is None else 4,
+                pitch=0,
+            ),
+            layers=layers,
         )
-    
-    # Create the map
-    map_deck = pdk.Deck(
-        map_style='mapbox://styles/mapbox/light-v9',
-        initial_view_state=pdk.ViewState(
-            latitude=st.session_state.lat,
-            longitude=st.session_state.lon,
-            zoom=6 if orig_points is None else 4,
-            pitch=0,
-        ),
-        layers=layers,
-        tooltip={
-            "html": "<b>Selected Point:</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}",
-            "style": {"backgroundColor": "steelblue", "color": "white"}
-        }
-    )
-    
-    # Display the single map
-    st.pydeck_chart(map_deck, use_container_width=True)
+        st.pydeck_chart(map_deck, use_container_width=True)
+    else:
+        # Use Folium for true click-to-select
+        folium_map = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6, control_scale=True)
+        # Historical points as a separate feature group
+        if orig_points is not None and not orig_points.empty:
+            fg = folium.FeatureGroup(name='Historical Points', show=True)
+            for _, r in orig_points.iterrows():
+                folium.CircleMarker(location=[float(r['Latitude']), float(r['Longitude'])], radius=3, color='#0064FF', fill=True, fill_opacity=0.4).add_to(fg)
+            fg.add_to(folium_map)
+        # Selected point marker
+        folium.CircleMarker(location=[st.session_state.lat, st.session_state.lon], radius=6, color='#FF0000', fill=True, fill_opacity=0.8, tooltip=f"Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}").add_to(folium_map)
+        folium.LayerControl().add_to(folium_map)
+        map_state = st_folium(folium_map, height=420, width=None, returned_objects=["last_clicked", "center", "zoom"])
+        if map_state and map_state.get("last_clicked"):
+            clicked = map_state["last_clicked"]
+            try:
+                clicked_lat = float(clicked.get('lat'))
+                clicked_lon = float(clicked.get('lng'))
+                if not np.isnan(clicked_lat) and not np.isnan(clicked_lon):
+                    st.session_state.lat = clicked_lat
+                    st.session_state.lon = clicked_lon
+                    st.success(f"📍 Selected: {clicked_lat:.6f}, {clicked_lon:.6f}")
+            except Exception:
+                pass
     
     # Map interaction section - only show for "Click on Map" method
     if input_method == "📍 Click on Map":
