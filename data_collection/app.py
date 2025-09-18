@@ -11,6 +11,7 @@ import json
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
 st.title("US Stability Predictor (CMIP + Meteostat + SSURGO + USGS)")
+st.caption("🚀 Version 2.0 - Interactive Map Features | Last Updated: 2025-01-18")
 
 def geocode_location(location_name):
     """
@@ -168,13 +169,13 @@ with col1:
     # Create the map
     map_deck = pdk.Deck(
         map_style='mapbox://styles/mapbox/light-v9',
-        initial_view_state=pdk.ViewState(
+            initial_view_state=pdk.ViewState(
             latitude=st.session_state.lat,
             longitude=st.session_state.lon,
             zoom=6 if orig_points is None else 4,
-            pitch=0,
-        ),
-        layers=layers,
+                pitch=0,
+            ),
+            layers=layers,
         tooltip={
             "html": "<b>Selected Point:</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}",
             "style": {"backgroundColor": "steelblue", "color": "white"}
