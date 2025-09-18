@@ -3,8 +3,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import pydeck as pdk
-from streamlit_folium import st_folium
-import folium
 import matplotlib.pyplot as plt
 import os
 import requests
@@ -175,26 +173,51 @@ with col1:
         )
         st.pydeck_chart(map_deck, use_container_width=True)
     else:
-        # Use Folium for true click-to-select
-        folium_map = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6, tiles='OpenStreetMap')
-        # Historical points layer (minimal markup)
+        # Use a simple coordinate input approach with map visualization
+        st.markdown("### 🗺️ Interactive Map Selection")
+        st.info("🗺️ **Pan and zoom the map below to find your location, then enter the coordinates manually.**")
+        
+        # Create a simple map for visualization only
+        map_data = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon]
+        })
+        
+        # Add historical points if available
         if orig_points is not None and not orig_points.empty:
-            for _, r in orig_points.iterrows():
-                folium.CircleMarker(location=[float(r['Latitude']), float(r['Longitude'])], radius=3, color='#0064FF', fill=True, fill_opacity=0.4, popup=None, tooltip=None).add_to(folium_map)
-        # Selected point marker (no tooltip to avoid serialization issues)
-        folium.CircleMarker(location=[float(st.session_state.lat), float(st.session_state.lon)], radius=6, color='#FF0000', fill=True, fill_opacity=0.8, popup=None, tooltip=None).add_to(folium_map)
-        map_state = st_folium(folium_map, height=420, returned_objects=["last_clicked"])
-        try:
-            clicked = map_state.get("last_clicked") if map_state else None
-            if clicked and 'lat' in clicked and 'lng' in clicked:
-                clicked_lat = float(clicked['lat'])
-                clicked_lon = float(clicked['lng'])
-                if not np.isnan(clicked_lat) and not np.isnan(clicked_lon):
-                    st.session_state.lat = clicked_lat
-                    st.session_state.lon = clicked_lon
-                    st.success(f"📍 Selected: {clicked_lat:.6f}, {clicked_lon:.6f}")
-        except Exception:
-            pass
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+        
+        st.map(map_data, zoom=6)
+        
+        # Coordinate input with current map center
+        st.markdown("### 📍 Enter Coordinates from Map")
+        col_map1, col_map2 = st.columns([1, 1])
+        
+        with col_map1:
+            map_lat = st.number_input(
+                "Latitude from map",
+                value=float(st.session_state.lat),
+                format="%0.6f",
+                key="map_lat_input",
+                help="Enter the latitude you see on the map"
+            )
+        
+        with col_map2:
+            map_lon = st.number_input(
+                "Longitude from map", 
+                value=float(st.session_state.lon),
+                format="%0.6f",
+                key="map_lon_input",
+                help="Enter the longitude you see on the map"
+            )
+        
+        # Update coordinates button
+        if st.button("📍 Set Location from Map", type="primary"):
+            st.session_state.lat = map_lat
+            st.session_state.lon = map_lon
+            st.success(f"✅ Location set to: {map_lat:.6f}, {map_lon:.6f}")
+            st.rerun()
     
     # Map interaction section - only show for "Click on Map" method
     if input_method == "📍 Click on Map":
