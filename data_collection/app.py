@@ -135,13 +135,10 @@ with col1:
     # Compute button
     run = st.button("🚀 Compute Prediction", type="primary")
 
-    st.subheader("Interactive Map")
+    # Single, clean map interface
+    st.subheader("Map View")
     
-    # Instructions for map interaction
-    if input_method == "📍 Click on Map":
-        st.info("🗺️ **Click anywhere on the map to select coordinates!**")
-    
-    # Create map layers
+    # Create a single, comprehensive map
     layers = [
         pdk.Layer(
             "ScatterplotLayer",
@@ -169,46 +166,30 @@ with col1:
     # Create the map
     map_deck = pdk.Deck(
         map_style='mapbox://styles/mapbox/light-v9',
-            initial_view_state=pdk.ViewState(
+        initial_view_state=pdk.ViewState(
             latitude=st.session_state.lat,
             longitude=st.session_state.lon,
             zoom=6 if orig_points is None else 4,
-                pitch=0,
-            ),
-            layers=layers,
+            pitch=0,
+        ),
+        layers=layers,
         tooltip={
             "html": "<b>Selected Point:</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}",
             "style": {"backgroundColor": "steelblue", "color": "white"}
         }
     )
     
-    # Display the map and handle clicks
-    map_result = st.pydeck_chart(map_deck, use_container_width=True)
+    # Display the single map
+    st.pydeck_chart(map_deck, use_container_width=True)
     
-    # Handle map clicks for coordinate selection
+    # Map interaction section - only show for "Click on Map" method
     if input_method == "📍 Click on Map":
-        st.markdown("**Interactive Map Selection:**")
+        st.markdown("### 📍 Map-Based Coordinate Selection")
         
-        # Instructions
-        st.info("🗺️ **Pan and zoom the map below, then use the coordinate inputs to select your exact location!**")
+        # Clear instructions
+        st.info("🗺️ **Use the map above to find your location, then enter the coordinates below:**")
         
-        # Create a DataFrame for the current point
-        current_point_df = pd.DataFrame({
-            'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon]
-        })
-        
-        # Display the map
-        st.map(
-            current_point_df,
-            zoom=6,
-            use_container_width=True
-        )
-        
-        # Interactive coordinate selection
-        st.markdown("### 📍 Select Coordinates")
-        st.markdown("**Use the map above to find your location, then enter the exact coordinates below:**")
-        
+        # Coordinate input with clear labels
         col_coord1, col_coord2 = st.columns([1, 1])
         
         with col_coord1:
@@ -236,9 +217,16 @@ with col1:
             st.success(f"✅ Location set to: {selected_lat:.6f}, {selected_lon:.6f}")
             st.rerun()
         
+        # Instructions for using the map
+        st.markdown("**How to use the map:**")
+        st.markdown("1. 🗺️ **Pan and zoom** the map above to find your desired location")
+        st.markdown("2. 📍 **Look at the coordinates** shown in the map tooltip or estimate them")
+        st.markdown("3. ⌨️ **Enter the coordinates** in the input fields above")
+        st.markdown("4. 🎯 **Click 'Set Location'** to update your selection")
+        
         # Quick location buttons for common landslide-prone areas
         st.markdown("### 🎯 Quick Location Selection")
-        st.markdown("**Click any button below to instantly set coordinates for these landslide-prone locations:**")
+        st.markdown("**Or click any button below to instantly set coordinates for these landslide-prone locations:**")
         
         col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
         
@@ -304,11 +292,6 @@ with col1:
                 st.rerun()
         
         st.markdown("💡 **Tip:** Pan and zoom the map to find your location, then enter the exact coordinates in the input fields above!")
-        
-        # Also show the pydeck map for reference with data points
-        if orig_points is not None and not orig_points.empty:
-            st.markdown("**Reference Map with Historical Data Points:**")
-            st.pydeck_chart(map_deck, use_container_width=True)
 
 with col2:
     st.subheader("Prediction and Features")
