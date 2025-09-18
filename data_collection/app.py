@@ -176,14 +176,14 @@ with col1:
         st.pydeck_chart(map_deck, use_container_width=True)
     else:
         # Use Folium for true click-to-select
-        folium_map = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6, control_scale=True)
+        folium_map = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6, tiles='OpenStreetMap')
         # Historical points layer (minimal markup)
         if orig_points is not None and not orig_points.empty:
             for _, r in orig_points.iterrows():
-                folium.CircleMarker(location=[float(r['Latitude']), float(r['Longitude'])], radius=3, color='#0064FF', fill=True, fill_opacity=0.4).add_to(folium_map)
+                folium.CircleMarker(location=[float(r['Latitude']), float(r['Longitude'])], radius=3, color='#0064FF', fill=True, fill_opacity=0.4, popup=None, tooltip=None).add_to(folium_map)
         # Selected point marker (no tooltip to avoid serialization issues)
-        folium.CircleMarker(location=[float(st.session_state.lat), float(st.session_state.lon)], radius=6, color='#FF0000', fill=True, fill_opacity=0.8).add_to(folium_map)
-        map_state = st_folium(folium_map, height=420)
+        folium.CircleMarker(location=[float(st.session_state.lat), float(st.session_state.lon)], radius=6, color='#FF0000', fill=True, fill_opacity=0.8, popup=None, tooltip=None).add_to(folium_map)
+        map_state = st_folium(folium_map, height=420, returned_objects=["last_clicked"])
         try:
             clicked = map_state.get("last_clicked") if map_state else None
             if clicked and 'lat' in clicked and 'lng' in clicked:
