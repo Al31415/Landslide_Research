@@ -186,9 +186,9 @@ with col1:
         # Selected point marker
         folium.CircleMarker(location=[st.session_state.lat, st.session_state.lon], radius=6, color='#FF0000', fill=True, fill_opacity=0.8, tooltip=f"Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}").add_to(folium_map)
         folium.LayerControl().add_to(folium_map)
-        map_state = st_folium(folium_map, height=420, width=None, returned_objects=["last_clicked", "center", "zoom"])
+        map_state = st_folium(folium_map, height=420)
         if map_state and map_state.get("last_clicked"):
-            clicked = map_state["last_clicked"]
+            clicked = map_state.get("last_clicked")
             try:
                 clicked_lat = float(clicked.get('lat'))
                 clicked_lon = float(clicked.get('lng'))
