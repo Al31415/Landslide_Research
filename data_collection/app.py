@@ -5,10 +5,43 @@ from datetime import datetime
 import pydeck as pdk
 import matplotlib.pyplot as plt
 import os
+import requests
+import json
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
 st.title("US Stability Predictor (CMIP + Meteostat + SSURGO + USGS)")
+
+def geocode_location(location_name):
+    """
+    Geocode a location name to get latitude and longitude coordinates.
+    Uses OpenStreetMap Nominatim API (free, no API key required).
+    """
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            'q': location_name,
+            'format': 'json',
+            'limit': 1,
+            'addressdetails': 1
+        }
+        headers = {
+            'User-Agent': 'Landslide-Research-App/1.0'
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        results = response.json()
+        if results:
+            lat = float(results[0]['lat'])
+            lon = float(results[0]['lon'])
+            return lat, lon, results[0].get('display_name', location_name)
+        else:
+            return None, None, None
+    except Exception as e:
+        st.error(f"Geocoding failed: {e}")
+        return None, None, None
 
 # Try to pre-load original coordinates
 orig_points = None
@@ -25,44 +58,192 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("Input Location and Date")
-    default_lat, default_lon = 37.7749, -122.4194
-    lat = st.number_input("Latitude", value=float(default_lat), format="%0.6f")
-    lon = st.number_input("Longitude", value=float(default_lon), format="%0.6f")
+    
+    # Initialize session state for coordinates
+    if 'lat' not in st.session_state:
+        st.session_state.lat = 37.7749
+    if 'lon' not in st.session_state:
+        st.session_state.lon = -122.4194
+    
+    # Input method selection
+    input_method = st.radio(
+        "Choose input method:",
+        ["📍 Click on Map", "🔍 Search Location", "⌨️ Manual Entry"],
+        horizontal=True
+    )
+    
+    if input_method == "🔍 Search Location":
+        st.markdown("**Search Examples:**")
+        st.markdown("- Cities: `San Francisco, CA`, `Seattle, WA`, `Denver, CO`")
+        st.markdown("- Landmarks: `Mount Rainier, WA`, `Grand Canyon, AZ`, `Yellowstone National Park`")
+        st.markdown("- Addresses: `1600 Pennsylvania Avenue, Washington DC`")
+        
+        location_input = st.text_input(
+            "Enter location:",
+            placeholder="Type a city, landmark, or address..."
+        )
+        
+        col_search1, col_search2 = st.columns([1, 1])
+        with col_search1:
+            search_button = st.button("🔍 Search", type="primary")
+        with col_search2:
+            if st.button("🗺️ Show on Map"):
+                st.session_state.show_search_result = True
+        
+        if search_button and location_input:
+            with st.spinner("Searching for location..."):
+                lat_result, lon_result, display_name = geocode_location(location_input)
+                if lat_result is not None:
+                    st.session_state.lat = lat_result
+                    st.session_state.lon = lon_result
+                    st.session_state.last_searched_location = display_name
+                    st.success(f"Found: {display_name}")
+                    st.info(f"Coordinates: {lat_result:.6f}, {lon_result:.6f}")
+                else:
+                    st.error("Location not found. Please try a different search term.")
+    
+    elif input_method == "⌨️ Manual Entry":
+        st.session_state.lat = st.number_input(
+            "Latitude", 
+            value=float(st.session_state.lat), 
+            format="%0.6f",
+            key="manual_lat"
+        )
+        st.session_state.lon = st.number_input(
+            "Longitude", 
+            value=float(st.session_state.lon), 
+            format="%0.6f",
+            key="manual_lon"
+        )
+    
+    # Display current coordinates with better formatting
+    st.markdown("### 📍 Current Location")
+    col_coord1, col_coord2 = st.columns([1, 1])
+    with col_coord1:
+        st.metric("Latitude", f"{st.session_state.lat:.6f}")
+    with col_coord2:
+        st.metric("Longitude", f"{st.session_state.lon:.6f}")
+    
+    # Add a quick location info display
+    if hasattr(st.session_state, 'last_searched_location'):
+        st.info(f"📍 Last searched: {st.session_state.last_searched_location}")
+    
+    # Event date input
     date = st.date_input("Event Date", value=datetime(2025, 1, 15))
-    run = st.button("Compute Prediction")
+    
+    # Compute button
+    run = st.button("🚀 Compute Prediction", type="primary")
 
-    st.subheader("Map")
+    st.subheader("Interactive Map")
+    
+    # Instructions for map interaction
+    if input_method == "📍 Click on Map":
+        st.info("🗺️ **Click anywhere on the map to select coordinates!**")
+    
+    # Create map layers
     layers = [
         pdk.Layer(
             "ScatterplotLayer",
-            data=pd.DataFrame({"lat": [lat], "lon": [lon]}),
+            data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
             get_position='[lon, lat]',
-            get_color='[200, 30, 0, 160]',
-            get_radius=5000,
+            get_color='[255, 0, 0, 200]',  # Red for selected point
+            get_radius=8000,
+            pickable=True,
         )
     ]
+    
+    # Add original data points if available
     if orig_points is not None and not orig_points.empty:
         layers.append(
             pdk.Layer(
                 "ScatterplotLayer",
                 data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
                 get_position='[lon, lat]',
-                get_color='[0, 100, 255, 100]',
+                get_color='[0, 100, 255, 100]',  # Blue for data points
                 get_radius=2000,
+                pickable=False,
             )
         )
-    st.pydeck_chart(
-        pdk.Deck(
-            map_style=None,
-            initial_view_state=pdk.ViewState(
-                latitude=lat,
-                longitude=lon,
-                zoom=4 if orig_points is not None else 6,
-                pitch=0,
-            ),
-            layers=layers,
-        )
+    
+    # Create the map
+    map_deck = pdk.Deck(
+        map_style='mapbox://styles/mapbox/light-v9',
+        initial_view_state=pdk.ViewState(
+            latitude=st.session_state.lat,
+            longitude=st.session_state.lon,
+            zoom=6 if orig_points is None else 4,
+            pitch=0,
+        ),
+        layers=layers,
+        tooltip={
+            "html": "<b>Selected Point:</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}",
+            "style": {"backgroundColor": "steelblue", "color": "white"}
+        }
     )
+    
+    # Display the map and handle clicks
+    map_result = st.pydeck_chart(map_deck, use_container_width=True)
+    
+    # Handle map clicks for coordinate selection
+    if input_method == "📍 Click on Map":
+        st.markdown("**Map Interaction:**")
+        
+        # Use Streamlit's native map for click functionality
+        st.markdown("**Click on the map below to select coordinates:**")
+        
+        # Create a DataFrame for the current point
+        current_point_df = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon]
+        })
+        
+        # Create a DataFrame for original data points if available
+        if orig_points is not None and not orig_points.empty:
+            orig_points_df = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+        else:
+            orig_points_df = pd.DataFrame(columns=['lat', 'lon'])
+        
+        # Display the clickable map
+        clicked_data = st.map(
+            current_point_df,
+            zoom=6,
+            use_container_width=True
+        )
+        
+        # Handle map clicks
+        if clicked_data is not None and not clicked_data.empty:
+            # Get the clicked coordinates
+            clicked_lat = clicked_data.iloc[0]['lat']
+            clicked_lon = clicked_data.iloc[0]['lon']
+            
+            # Update session state
+            st.session_state.lat = clicked_lat
+            st.session_state.lon = clicked_lon
+            
+            st.success(f"📍 Coordinates updated to: {clicked_lat:.6f}, {clicked_lon:.6f}")
+            st.rerun()  # Refresh the page to update the display
+        
+        # Control buttons
+        col_map1, col_map2 = st.columns([1, 1])
+        
+        with col_map1:
+            if st.button("🔄 Reset to Default"):
+                st.session_state.lat = 37.7749
+                st.session_state.lon = -122.4194
+                st.success("Reset to San Francisco coordinates")
+                st.rerun()
+        
+        with col_map2:
+            if st.button("📍 Center on Current Point"):
+                st.success(f"Map centered on: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
+                st.rerun()
+        
+        st.markdown("💡 **Tip:** Click anywhere on the map above to select those coordinates!")
+        
+        # Also show the pydeck map for reference with data points
+        if orig_points is not None and not orig_points.empty:
+            st.markdown("**Reference Map with Historical Data Points:**")
+            st.pydeck_chart(map_deck, use_container_width=True)
 
 with col2:
     st.subheader("Prediction and Features")
@@ -84,8 +265,8 @@ with col2:
 
         with st.spinner("Collecting data and computing features..."):
             feats = svc.compute_features(
-                lat,
-                lon,
+                st.session_state.lat,
+                st.session_state.lon,
                 datetime.combine(date, datetime.min.time()),
                 progress_callback=on_progress,
             )
