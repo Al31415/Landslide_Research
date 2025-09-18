@@ -177,27 +177,24 @@ with col1:
     else:
         # Use Folium for true click-to-select
         folium_map = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6, control_scale=True)
-        # Historical points as a separate feature group
+        # Historical points layer (minimal markup)
         if orig_points is not None and not orig_points.empty:
-            fg = folium.FeatureGroup(name='Historical Points', show=True)
             for _, r in orig_points.iterrows():
-                folium.CircleMarker(location=[float(r['Latitude']), float(r['Longitude'])], radius=3, color='#0064FF', fill=True, fill_opacity=0.4).add_to(fg)
-            fg.add_to(folium_map)
-        # Selected point marker
-        folium.CircleMarker(location=[st.session_state.lat, st.session_state.lon], radius=6, color='#FF0000', fill=True, fill_opacity=0.8, tooltip=f"Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}").add_to(folium_map)
-        folium.LayerControl().add_to(folium_map)
+                folium.CircleMarker(location=[float(r['Latitude']), float(r['Longitude'])], radius=3, color='#0064FF', fill=True, fill_opacity=0.4).add_to(folium_map)
+        # Selected point marker (no tooltip to avoid serialization issues)
+        folium.CircleMarker(location=[float(st.session_state.lat), float(st.session_state.lon)], radius=6, color='#FF0000', fill=True, fill_opacity=0.8).add_to(folium_map)
         map_state = st_folium(folium_map, height=420)
-        if map_state and map_state.get("last_clicked"):
-            clicked = map_state.get("last_clicked")
-            try:
-                clicked_lat = float(clicked.get('lat'))
-                clicked_lon = float(clicked.get('lng'))
+        try:
+            clicked = map_state.get("last_clicked") if map_state else None
+            if clicked and 'lat' in clicked and 'lng' in clicked:
+                clicked_lat = float(clicked['lat'])
+                clicked_lon = float(clicked['lng'])
                 if not np.isnan(clicked_lat) and not np.isnan(clicked_lon):
                     st.session_state.lat = clicked_lat
                     st.session_state.lon = clicked_lon
                     st.success(f"📍 Selected: {clicked_lat:.6f}, {clicked_lon:.6f}")
-            except Exception:
-                pass
+        except Exception:
+            pass
     
     # Map interaction section - only show for "Click on Map" method
     if input_method == "📍 Click on Map":
