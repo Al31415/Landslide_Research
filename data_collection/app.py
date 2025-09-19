@@ -430,7 +430,7 @@ with col2:
                 feature_df = pd.DataFrame(list(features.items()), columns=['Feature', 'Value'])
                 st.dataframe(feature_df, use_container_width=True)
                 
-        except Exception as e:
+            except Exception as e:
                 st.error(f"Prediction failed: {e}")
                 st.exception(e)
     else:
