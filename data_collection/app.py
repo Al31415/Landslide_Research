@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
-from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -174,9 +173,9 @@ with col1:
         )
         st.pydeck_chart(map_deck, use_container_width=True)
     else:
-        # Use a simple map with click-to-select using JavaScript
+        # Use a simple map with coordinate input
         st.markdown("### 🗺️ Interactive Map Selection")
-        st.info("🗺️ **Click anywhere on the map below to select a location!**")
+        st.info("🗺️ **Pan and zoom the map below to find your location, then enter coordinates manually.**")
         
         # Create a simple map for visualization
         map_data = pd.DataFrame({
@@ -192,79 +191,61 @@ with col1:
         # Display the map
         st.map(map_data, zoom=6)
         
-        # Add click-to-select functionality using JavaScript
-        st.markdown("### 🖱️ Click to Select Location")
+        # Quick location selection buttons
+        st.markdown("### 🎯 Quick Location Selection")
+        st.markdown("**Click any button below to instantly set coordinates for these landslide-prone locations:**")
         
-        # Create a button that will capture map clicks
-        if st.button("🎯 Enable Click-to-Select Mode", type="primary"):
-            # Use JavaScript to capture clicks and update coordinates
-            js_code = """
-            // Create a click handler for the map
-            function enableMapClick() {
-                // Find the map container
-                const mapContainer = document.querySelector('[data-testid="stMap"]');
-                if (mapContainer) {
-                    mapContainer.style.cursor = 'crosshair';
-                    
-                    // Add click event listener
-                    mapContainer.addEventListener('click', function(e) {
-                        // Get click coordinates relative to map
-                        const rect = mapContainer.getBoundingClientRect();
-                        const x = e.clientX - rect.left;
-                        const y = e.clientY - rect.top;
-                        
-                        // Convert to lat/lon (approximate)
-                        // This is a simplified conversion - in reality you'd need proper map projection
-                        const lat = 90 - (y / rect.height) * 180;
-                        const lon = (x / rect.width) * 360 - 180;
-                        
-                        // Store in session storage
-                        sessionStorage.setItem('clicked_lat', lat);
-                        sessionStorage.setItem('clicked_lon', lon);
-                        
-                        // Show success message
-                        alert(`Location selected: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
-                        
-                        // Reload the page to update coordinates
-                        window.location.reload();
-                    });
-                    
-                    alert('Click-to-select enabled! Click anywhere on the map to select a location.');
-                } else {
-                    alert('Map not found. Please try again.');
-                }
-            }
-            
-            // Run the function
-            enableMapClick();
-            """
-            
-            # Execute the JavaScript
-            streamlit_js_eval(js_code)
+        col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
         
-        # Check if coordinates were clicked
-        try:
-            clicked_lat = streamlit_js_eval("sessionStorage.getItem('clicked_lat')")
-            clicked_lon = streamlit_js_eval("sessionStorage.getItem('clicked_lon')")
-            
-            if clicked_lat and clicked_lon:
-                try:
-                    lat_val = float(clicked_lat)
-                    lon_val = float(clicked_lon)
-                    if not np.isnan(lat_val) and not np.isnan(lon_val):
-                        st.session_state.lat = lat_val
-                        st.session_state.lon = lon_val
-                        st.success(f"📍 Location selected: {lat_val:.6f}, {lon_val:.6f}")
-                        # Clear the session storage
-                        streamlit_js_eval("sessionStorage.removeItem('clicked_lat'); sessionStorage.removeItem('clicked_lon');")
-                        st.rerun()
-                except (ValueError, TypeError):
-                    pass
-        except:
-            pass
+        with col_quick1:
+            if st.button("🏔️ Mount Rainier, WA"):
+                st.session_state.lat = 46.8523
+                st.session_state.lon = -121.7603
+                st.success("📍 Set to Mount Rainier, WA")
+                st.rerun()
         
-        # Manual coordinate input as fallback
+        with col_quick2:
+            if st.button("🌋 Mount St. Helens, WA"):
+                st.session_state.lat = 46.1914
+                st.session_state.lon = -122.1956
+                st.success("📍 Set to Mount St. Helens, WA")
+                st.rerun()
+        
+        with col_quick3:
+            if st.button("🏔️ Yosemite, CA"):
+                st.session_state.lat = 37.8651
+                st.session_state.lon = -119.5383
+                st.success("📍 Set to Yosemite, CA")
+                st.rerun()
+        
+        # Additional quick locations
+        col_quick4, col_quick5, col_quick6 = st.columns([1, 1, 1])
+        
+        with col_quick4:
+            if st.button("🌲 Olympic NP, WA"):
+                st.session_state.lat = 47.8021
+                st.session_state.lon = -123.6044
+                st.success("📍 Set to Olympic National Park, WA")
+                st.rerun()
+        
+        with col_quick5:
+            if st.button("🏔️ Glacier NP, MT"):
+                st.session_state.lat = 48.7596
+                st.session_state.lon = -113.7870
+                st.success("📍 Set to Glacier National Park, MT")
+                st.rerun()
+        
+        with col_quick6:
+            if st.button("🌋 Lassen NP, CA"):
+                st.session_state.lat = 40.4983
+                st.session_state.lon = -121.4209
+                st.success("📍 Set to Lassen National Park, CA")
+                st.rerun()
+        
+        # Manual coordinate input
         st.markdown("### 📍 Manual Coordinate Entry")
+        st.markdown("**Enter coordinates manually or use the quick selection buttons above:**")
+        
         col_map1, col_map2 = st.columns([1, 1])
         
         with col_map1:
@@ -286,11 +267,21 @@ with col1:
             )
         
         # Update coordinates button
-        if st.button("📍 Set Location", type="secondary"):
+        if st.button("📍 Set Location", type="primary"):
             st.session_state.lat = map_lat
             st.session_state.lon = map_lon
             st.success(f"✅ Location set to: {map_lat:.6f}, {map_lon:.6f}")
             st.rerun()
+        
+        # Instructions
+        st.markdown("### 📖 How to Use This Map")
+        st.markdown("""
+        1. **🗺️ Pan and zoom** the map above to explore different areas
+        2. **🎯 Use quick buttons** to instantly select common landslide-prone locations
+        3. **⌨️ Enter coordinates manually** if you know the exact lat/lon
+        4. **📍 Click "Set Location"** to update your selection
+        5. **🚀 Run prediction** with your selected coordinates
+        """)
     
     # Map interaction section - only show for "Click on Map" method
     if input_method == "📍 Click on Map":
