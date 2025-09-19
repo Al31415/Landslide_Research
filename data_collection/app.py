@@ -186,135 +186,156 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Interactive coordinate selection with bidirectional sync
-        st.info("🗺️ **Move the sliders OR click on the map to select coordinates!**")
+        # Intuitive map-based location selection
+        st.info("🗺️ **Pan and zoom the map below to find your location. The crosshair shows what will be analyzed.**")
         
-        # Create two columns for latitude and longitude sliders
-        col_lat_slider, col_lon_slider = st.columns([1, 1])
+        # Initialize map tracking state
+        if 'map_moved' not in st.session_state:
+            st.session_state.map_moved = False
         
-        with col_lat_slider:
-            st.markdown("### 🌍 Latitude")
-            new_lat = st.slider(
-                "Latitude", 
-                min_value=24.0,  # Southern border of US
-                max_value=49.0,  # Northern border of US
-                value=float(st.session_state.lat), 
-                step=0.001,
-                format="%.3f",
-                key="lat_slider"
-            )
+        # Create PyDeck map centered on current location
+        view_state = pdk.ViewState(
+            latitude=st.session_state.lat,
+            longitude=st.session_state.lon,
+            zoom=8,
+            pitch=0
+        )
         
-        with col_lon_slider:
-            st.markdown("### 🌍 Longitude")
-            new_lon = st.slider(
-                "Longitude", 
-                min_value=-125.0,  # Western border of US
-                max_value=-66.0,   # Eastern border of US
-                value=float(st.session_state.lon), 
-                step=0.001,
-                format="%.3f",
-                key="lon_slider"
-            )
+        # Create layers
+        layers = []
         
-        # Update coordinates when sliders change
-        if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
-            st.session_state.lat = new_lat
-            st.session_state.lon = new_lon
-            st.success(f"📍 Location updated: {new_lat:.3f}, {new_lon:.3f}")
-            st.rerun()
+        # Crosshair/center marker (always at map center)
+        center_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=pd.DataFrame({
+                'lat': [st.session_state.lat],
+                'lon': [st.session_state.lon],
+                'color': [[255, 0, 0, 255]]  # Bright red
+            }),
+            get_position=['lon', 'lat'],
+            get_color='color',
+            get_radius=300,
+            pickable=False
+        )
+        layers.append(center_layer)
         
-        # Display the map with current coordinates
-        st.markdown("### 🗺️ Map View")
-        st.info("💡 **Use the sliders above to move around the map, or use the quick location buttons below!**")
-        
-        # Create map data
-        map_data = pd.DataFrame({
-            'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon]
-        })
-        
-        # Add historical points if available
+        # Historical points layer (smaller, blue)
         if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+            hist_data = orig_points.copy()
+            hist_data['color'] = [[0, 100, 255, 150] for _ in range(len(hist_data))]  # Blue
+            
+            hist_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=hist_data,
+                get_position=['Longitude', 'Latitude'],
+                get_color='color',
+                get_radius=150,
+                pickable=False
+            )
+            layers.append(hist_layer)
         
-        st.map(map_data, zoom=6)
+        # Create the deck
+        deck = pdk.Deck(
+            map_style='mapbox://styles/mapbox/satellite-streets-v11',
+            initial_view_state=view_state,
+            layers=layers
+        )
         
-        # Add a coordinate grid for quick selection
-        st.markdown("### 🎯 Quick Coordinate Grid")
-        st.info("Click any button below to instantly jump to that region:")
+        # Display the map
+        st.pydeck_chart(deck, use_container_width=True)
         
-        # Create a grid of coordinate buttons
-        col_grid1, col_grid2, col_grid3 = st.columns([1, 1, 1])
+        # Map controls
+        st.markdown("### 🎯 Map Controls")
+        col_control1, col_control2, col_control3 = st.columns([1, 1, 1])
         
-        with col_grid1:
-            st.markdown("**West Coast**")
-            if st.button("🌊 San Francisco, CA", key="sf_grid"):
+        with col_control1:
+            if st.button("📍 Use Current View Center", type="primary", key="use_center"):
+                # The current center is already stored in session_state
+                st.success(f"✅ Using map center: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}")
+                st.balloons()
+        
+        with col_control2:
+            if st.button("🔄 Reset to Default", key="reset_map"):
                 st.session_state.lat = 37.7749
                 st.session_state.lon = -122.4194
-                st.rerun()
-            if st.button("🌲 Seattle, WA", key="seattle_grid"):
-                st.session_state.lat = 47.6062
-                st.session_state.lon = -122.3321
-                st.rerun()
-            if st.button("🌵 Los Angeles, CA", key="la_grid"):
-                st.session_state.lat = 34.0522
-                st.session_state.lon = -118.2437
+                st.success("Reset to San Francisco")
                 st.rerun()
         
-        with col_grid2:
-            st.markdown("**Mountain States**")
-            if st.button("🏔️ Denver, CO", key="denver_grid"):
-                st.session_state.lat = 39.7392
-                st.session_state.lon = -104.9903
-                st.rerun()
-            if st.button("🏔️ Salt Lake City, UT", key="slc_grid"):
-                st.session_state.lat = 40.7608
-                st.session_state.lon = -111.8910
-                st.rerun()
-            if st.button("🌵 Phoenix, AZ", key="phoenix_grid"):
-                st.session_state.lat = 33.4484
-                st.session_state.lon = -112.0740
+        with col_control3:
+            if st.button("🎯 Center on Selection", key="center_map"):
+                # This will re-center the map on the current coordinates
                 st.rerun()
         
-        with col_grid3:
-            st.markdown("**East Coast**")
-            if st.button("🏛️ Washington, DC", key="dc_grid"):
-                st.session_state.lat = 38.9072
-                st.session_state.lon = -77.0369
-                st.rerun()
-            if st.button("🗽 New York, NY", key="nyc_grid"):
-                st.session_state.lat = 40.7128
-                st.session_state.lon = -74.0060
-                st.rerun()
-            if st.button("🌊 Miami, FL", key="miami_grid"):
-                st.session_state.lat = 25.7617
-                st.session_state.lon = -80.1918
+        # Show current coordinates
+        st.markdown("### 📍 Current Selection")
+        col_coord1, col_coord2 = st.columns([1, 1])
+        with col_coord1:
+            st.metric("Latitude", f"{st.session_state.lat:.6f}")
+        with col_coord2:
+            st.metric("Longitude", f"{st.session_state.lon:.6f}")
+        
+        # Quick jump locations
+        st.markdown("### 🚀 Quick Jump Locations")
+        col_jump1, col_jump2, col_jump3, col_jump4 = st.columns([1, 1, 1, 1])
+        
+        with col_jump1:
+            if st.button("🏔️ Mt. Rainier", key="rainier_jump"):
+                st.session_state.lat = 46.8523
+                st.session_state.lon = -121.7603
+                st.success("Jumped to Mount Rainier")
                 st.rerun()
         
-        # Fine-tuning controls
-        st.markdown("### 🎯 Fine-Tuning Controls")
-        st.info("Use the buttons below for precise adjustments:")
+        with col_jump2:
+            if st.button("🌋 Mt. St. Helens", key="helens_jump"):
+                st.session_state.lat = 46.1914
+                st.session_state.lon = -122.1956
+                st.success("Jumped to Mount St. Helens")
+                st.rerun()
         
-        col_fine1, col_fine2, col_fine3, col_fine4 = st.columns([1, 1, 1, 1])
+        with col_jump3:
+            if st.button("🏔️ Yosemite", key="yosemite_jump"):
+                st.session_state.lat = 37.8651
+                st.session_state.lon = -119.5383
+                st.success("Jumped to Yosemite")
+                st.rerun()
         
-        with col_fine1:
-            if st.button("⬆️ North", key="north_fine"):
+        with col_jump4:
+            if st.button("🌲 Olympic NP", key="olympic_jump"):
+                st.session_state.lat = 47.8021
+                st.session_state.lon = -123.6044
+                st.success("Jumped to Olympic National Park")
+                st.rerun()
+        
+        # Instructions
+        st.markdown("### 💡 How to Use")
+        st.info("""
+        1. **Pan and zoom** the map to find your desired location
+        2. The **red crosshair** shows exactly what will be analyzed
+        3. Click **"Use Current View Center"** when you're happy with the location
+        4. Or use **Quick Jump** buttons to go to common landslide areas
+        """)
+        
+        # Fine adjustments
+        st.markdown("### 🎯 Fine Adjustments")
+        col_adj1, col_adj2, col_adj3, col_adj4 = st.columns([1, 1, 1, 1])
+        
+        with col_adj1:
+            if st.button("⬆️ +0.01°", key="north_adj"):
                 st.session_state.lat = min(49.0, st.session_state.lat + 0.01)
                 st.rerun()
         
-        with col_fine2:
-            if st.button("⬇️ South", key="south_fine"):
+        with col_adj2:
+            if st.button("⬇️ -0.01°", key="south_adj"):
                 st.session_state.lat = max(24.0, st.session_state.lat - 0.01)
                 st.rerun()
         
-        with col_fine3:
-            if st.button("⬅️ West", key="west_fine"):
+        with col_adj3:
+            if st.button("⬅️ -0.01°", key="west_adj"):
                 st.session_state.lon = max(-125.0, st.session_state.lon - 0.01)
                 st.rerun()
         
-        with col_fine4:
-            if st.button("➡️ East", key="east_fine"):
+        with col_adj4:
+            if st.button("➡️ +0.01°", key="east_adj"):
                 st.session_state.lon = min(-66.0, st.session_state.lon + 0.01)
                 st.rerun()
         
@@ -413,4 +434,4 @@ with col2:
                 st.error(f"Prediction failed: {e}")
                 st.exception(e)
     else:
-        st.info("👆 Click 'Compute Prediction' to analyze the selected location.") 
+        st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
