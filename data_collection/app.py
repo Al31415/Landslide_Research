@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
-from streamlit_js_eval import streamlit_js_eval
+# Removed streamlit-js-eval due to compatibility issues
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -221,37 +221,39 @@ with col1:
             st.markdown("### 🎯 Click-Anywhere Selection")
             st.info("**Click anywhere on the map above to select that exact location!**")
             
-            # JavaScript to capture map clicks
-            if st.button("🖱️ Enable Click-to-Select", type="primary", key="enable_click"):
-                # Use a simpler single-line JavaScript approach
-                js_code = "const mapContainer = document.querySelector('[data-testid=\"stMap\"]'); if (mapContainer) { mapContainer.style.cursor = 'crosshair'; mapContainer.addEventListener('click', function(e) { const rect = e.target.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top; const lat = 90 - (y / rect.height) * 180; const lon = (x / rect.width) * 360 - 180; sessionStorage.setItem('clicked_lat', lat); sessionStorage.setItem('clicked_lon', lon); alert('Location selected: ' + lat.toFixed(6) + ', ' + lon.toFixed(6)); window.location.reload(); }); alert('Click-to-select enabled! Click anywhere on the map.'); } else { alert('Map not found.'); }"
-                
-                try:
-                    streamlit_js_eval(js_code)
-                except Exception as e:
-                    st.error(f"JavaScript execution failed: {e}")
-                    st.info("Please use the quick location buttons below instead.")
+            # Manual coordinate input for precise selection
+            st.markdown("### 🎯 Manual Coordinate Entry")
+            st.info("**Use the map above to find your desired location, then enter the exact coordinates below:**")
             
-            # Check if coordinates were clicked
-            try:
-                clicked_lat = streamlit_js_eval("sessionStorage.getItem('clicked_lat')")
-                clicked_lon = streamlit_js_eval("sessionStorage.getItem('clicked_lon')")
-                
-                if clicked_lat and clicked_lon:
-                    try:
-                        lat_val = float(clicked_lat)
-                        lon_val = float(clicked_lon)
-                        if not np.isnan(lat_val) and not np.isnan(lon_val):
-                            st.session_state.lat = lat_val
-                            st.session_state.lon = lon_val
-                            st.success(f"📍 Location selected from map click: {lat_val:.6f}, {lon_val:.6f}")
-                            # Clear the session storage
-                            streamlit_js_eval("sessionStorage.removeItem('clicked_lat'); sessionStorage.removeItem('clicked_lon');")
-                            st.rerun()
-                    except (ValueError, TypeError):
-                        pass
-            except:
-                pass
+            col_coord1, col_coord2 = st.columns([1, 1])
+            
+            with col_coord1:
+                new_lat = st.number_input(
+                    "Latitude", 
+                    min_value=-90.0, 
+                    max_value=90.0, 
+                    value=float(st.session_state.lat), 
+                    step=0.000001,
+                    format="%.6f",
+                    key="manual_lat"
+                )
+            
+            with col_coord2:
+                new_lon = st.number_input(
+                    "Longitude", 
+                    min_value=-180.0, 
+                    max_value=180.0, 
+                    value=float(st.session_state.lon), 
+                    step=0.000001,
+                    format="%.6f",
+                    key="manual_lon"
+                )
+            
+            if st.button("📍 Set Location from Coordinates", type="primary", key="set_manual_coords"):
+                st.session_state.lat = new_lat
+                st.session_state.lon = new_lon
+                st.success(f"📍 Location set to: {new_lat:.6f}, {new_lon:.6f}")
+                st.rerun()
         
         else:  # Pan mode
             st.markdown("### 🖱️ Pan Mode Active")
