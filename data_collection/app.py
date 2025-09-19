@@ -193,24 +193,30 @@ with col1:
         if 'map_moved' not in st.session_state:
             st.session_state.map_moved = False
         
-        # Create map data with current location (red dot) and historical points
+        # Show current target coordinates prominently
+        st.markdown("### 🎯 Current Target Location")
+        col_target1, col_target2 = st.columns([1, 1])
+        with col_target1:
+            st.metric("📍 Latitude", f"{st.session_state.lat:.6f}", help="This is what will be analyzed")
+        with col_target2:
+            st.metric("📍 Longitude", f"{st.session_state.lon:.6f}", help="This is what will be analyzed")
+        
+        # Create map data with current target location highlighted
         map_data = pd.DataFrame({
             'lat': [st.session_state.lat],
             'lon': [st.session_state.lon]
         })
         
-        # Add historical points if available (blue dots)
+        # Add historical points if available
         if orig_points is not None and not orig_points.empty:
             hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
             map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
-        # Display the map using standard Streamlit map
+        # Display the map centered on target location
         st.map(map_data, zoom=8, use_container_width=True)
         
-        # Add crosshair indicator
-        st.markdown("### 🎯 Current Target")
-        st.info(f"**Red dot shows your target location:** {st.session_state.lat:.4f}, {st.session_state.lon:.4f}")
-        st.markdown("**Instructions:** Use the controls below to move to your desired location, then click 'Use Current View Center'")
+        # Add clear instructions
+        st.info("🗺️ **The red dot shows your current target location. Use the controls below to move it to your desired location!**")
         
         # Map controls
         st.markdown("### 🎯 Map Controls")
@@ -218,8 +224,10 @@ with col1:
         
         with col_control1:
             if st.button("📍 Use Current View Center", type="primary", key="use_center"):
-                # The current center is already stored in session_state
-                st.success(f"✅ Using map center: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}")
+                # For now, we'll use the current coordinates as the center
+                # In a future enhancement, we could detect the actual map center
+                st.success(f"✅ Using current coordinates: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}")
+                st.info("💡 **Tip:** Use the Quick Jump or Fine Adjustment buttons to move to your exact desired location!")
                 st.balloons()
         
         with col_control2:
