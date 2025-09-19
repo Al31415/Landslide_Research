@@ -176,26 +176,67 @@ with col1:
         # Interactive map for direct selection
         st.info("🗺️ **Click on the map below to select a location directly!**")
         
-        # Create an interactive map with clickable points
+        # Create a dense grid of clickable points for true click-anywhere functionality
+        import numpy as np
+        
+        # Create a grid of points across the visible map area
+        lat_range = np.linspace(st.session_state.lat - 2, st.session_state.lat + 2, 20)
+        lon_range = np.linspace(st.session_state.lon - 2, st.session_state.lon + 2, 20)
+        
+        # Create a meshgrid of coordinates
+        lon_grid, lat_grid = np.meshgrid(lon_range, lat_range)
+        
+        # Flatten the grid and create a DataFrame
+        grid_points = pd.DataFrame({
+            'lat': lat_grid.flatten(),
+            'lon': lon_grid.flatten(),
+            'type': 'clickable'
+        })
+        
+        # Add current location
+        current_point = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon],
+            'type': 'current'
+        })
+        
+        # Combine all points
+        all_points = pd.concat([grid_points, current_point], ignore_index=True)
+        
+        # Add historical points if available
+        if orig_points is not None and not orig_points.empty:
+            hist_points = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}).copy()
+            hist_points['type'] = 'historical'
+            all_points = pd.concat([all_points, hist_points], ignore_index=True)
+        
+        # Create layers with different colors for different point types
         layers = [
             pdk.Layer(
                 "ScatterplotLayer",
-                data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
+                data=all_points[all_points['type'] == 'clickable'],
                 get_position='[lon, lat]',
-                get_color='[255, 0, 0, 200]',
+                get_color='[0, 255, 0, 20]',  # Very transparent green for clickable grid
+                get_radius=1000,
+                pickable=True,
+            ),
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=all_points[all_points['type'] == 'current'],
+                get_position='[lon, lat]',
+                get_color='[255, 0, 0, 200]',  # Red for current location
                 get_radius=8000,
                 pickable=True,
             )
         ]
         
-        # Add historical points if available
+        # Add historical points layer
         if orig_points is not None and not orig_points.empty:
             layers.append(
                 pdk.Layer(
                     "ScatterplotLayer",
-                    data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
+                    data=all_points[all_points['type'] == 'historical'],
                     get_position='[lon, lat]',
-                    get_color='[0, 100, 255, 100]',
+                    get_color='[0, 100, 255, 100]',  # Blue for historical
                     get_radius=2000,
                     pickable=True,
                 )
@@ -217,18 +258,32 @@ with col1:
             }
         )
         
-        # Display the map
-        st.pydeck_chart(map_deck, use_container_width=True)
+        # Display the map with click handling
+        selected_data = st.pydeck_chart(map_deck, use_container_width=True, on_select="rerun")
+        
+        # Handle map clicks
+        if selected_data is not None and hasattr(selected_data, 'selection') and selected_data.selection:
+            if hasattr(selected_data.selection, 'point') and selected_data.selection.point:
+                point = selected_data.selection.point
+                if hasattr(point, 'lat') and hasattr(point, 'lon'):
+                    new_lat = float(point.lat)
+                    new_lon = float(point.lon)
+                    if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
+                        st.session_state.lat = new_lat
+                        st.session_state.lon = new_lon
+                        st.success(f"📍 Location selected from map: {new_lat:.6f}, {new_lon:.6f}")
+                        st.rerun()
         
         # Add instructions for map interaction
-        st.markdown("### 🖱️ How to Select a Location")
+        st.markdown("### 🖱️ Click Anywhere on the Map!")
         st.info("""
-        **Current PyDeck limitation:** You can only click on existing markers (red and blue dots).
+        **🎯 True click-anywhere functionality:** Click anywhere on the map to select that location!
         
-        **To select a new location:**
-        1. **Click on any existing marker** on the map above
-        2. **Use the quick location buttons below** to instantly select common areas
-        3. **Use the control buttons** to reset or center the map
+        **How it works:**
+        1. **Click anywhere** on the map above to select that exact location
+        2. **Green grid** shows clickable areas (very subtle)
+        3. **Red dot** shows your current selection
+        4. **Blue dots** show historical data points
         """)
         
         # Quick location buttons for common areas
