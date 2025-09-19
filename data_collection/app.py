@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
-# Removed streamlit-js-eval due to compatibility issues
+import folium
+from streamlit_folium import st_folium
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -20,6 +21,7 @@ def geocode_location(location_name):
     Uses OpenStreetMap Nominatim API (free, no API key required).
     """
     try:
+        # Use Nominatim API for geocoding
         url = "https://nominatim.openstreetmap.org/search"
         params = {
             'q': location_name,
@@ -28,33 +30,40 @@ def geocode_location(location_name):
             'addressdetails': 1
         }
         headers = {
-            'User-Agent': 'Landslide-Research-App/1.0'
+            'User-Agent': 'Stability Predictor App'
         }
         
         response = requests.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()
         
-        results = response.json()
-        if results:
-            lat = float(results[0]['lat'])
-            lon = float(results[0]['lon'])
-            return lat, lon, results[0].get('display_name', location_name)
+        data = response.json()
+        if data:
+            lat = float(data[0]['lat'])
+            lon = float(data[0]['lon'])
+            return lat, lon, data[0]['display_name']
         else:
             return None, None, None
+            
     except Exception as e:
         st.error(f"Geocoding failed: {e}")
         return None, None, None
 
-# Try to pre-load original coordinates
-orig_points = None
-try:
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    csv_path = os.path.join(base_dir, 'data', 'Corrected_Input_Data.csv')
-    df_orig = pd.read_csv(csv_path)
-    if {'Latitude', 'Longitude'}.issubset(df_orig.columns):
-        orig_points = df_orig[['Latitude', 'Longitude']].dropna().head(500)
-except Exception:
-    pass
+# Load historical data points
+@st.cache_data
+def load_historical_data():
+    try:
+        # Try to load the historical data
+        data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'Corrected_Input_Data.csv')
+        if os.path.exists(data_path):
+            df = pd.read_csv(data_path)
+            return df[['Latitude', 'Longitude']].dropna()
+        else:
+            return pd.DataFrame()
+    except Exception as e:
+        st.warning(f"Could not load historical data: {e}")
+        return pd.DataFrame()
+
+orig_points = load_historical_data()
 
 col1, col2 = st.columns([1, 1])
 
@@ -75,48 +84,53 @@ with col1:
     )
     
     if input_method == "🔍 Search Location":
-        st.markdown("**Search Examples:**")
-        st.markdown("- Cities: `San Francisco, CA`, `Seattle, WA`, `Denver, CO`")
-        st.markdown("- Landmarks: `Mount Rainier, WA`, `Grand Canyon, AZ`, `Yellowstone National Park`")
-        st.markdown("- Addresses: `1600 Pennsylvania Avenue, Washington DC`")
+        # Search location input
+        location_name = st.text_input("Enter location name:", placeholder="e.g., Mount Rainier, Washington")
         
-        location_input = st.text_input(
-            "Enter location:",
-            placeholder="Type a city, landmark, or address..."
-        )
-        
-        col_search1, col_search2 = st.columns([1, 1])
-        with col_search1:
-            search_button = st.button("🔍 Search", type="primary")
-        with col_search2:
-            if st.button("🗺️ Show on Map"):
-                st.session_state.show_search_result = True
-        
-        if search_button and location_input:
-            with st.spinner("Searching for location..."):
-                lat_result, lon_result, display_name = geocode_location(location_input)
-                if lat_result is not None:
-                    st.session_state.lat = lat_result
-                    st.session_state.lon = lon_result
-                    st.session_state.last_searched_location = display_name
-                    st.success(f"Found: {display_name}")
-                    st.info(f"Coordinates: {lat_result:.6f}, {lon_result:.6f}")
-                else:
-                    st.error("Location not found. Please try a different search term.")
+        if st.button("🔍 Search", key="search_location"):
+            if location_name:
+                with st.spinner("Searching for location..."):
+                    lat, lon, display_name = geocode_location(location_name)
+                    if lat is not None and lon is not None:
+                        st.session_state.lat = lat
+                        st.session_state.lon = lon
+                        st.session_state.last_searched_location = display_name
+                        st.success(f"📍 Found: {display_name}")
+                        st.rerun()
+                    else:
+                        st.error("Location not found. Please try a different search term.")
+            else:
+                st.warning("Please enter a location name.")
     
     elif input_method == "⌨️ Manual Entry":
-        st.session_state.lat = st.number_input(
-            "Latitude", 
-            value=float(st.session_state.lat), 
-            format="%0.6f",
-            key="manual_lat"
-        )
-        st.session_state.lon = st.number_input(
-            "Longitude", 
-            value=float(st.session_state.lon), 
-            format="%0.6f",
-            key="manual_lon"
-        )
+        # Manual coordinate input
+        col_lat, col_lon = st.columns([1, 1])
+        
+        with col_lat:
+            lat_input = st.number_input(
+                "Latitude", 
+                min_value=-90.0, 
+                max_value=90.0, 
+                value=float(st.session_state.lat), 
+                step=0.000001,
+                format="%.6f"
+            )
+        
+        with col_lon:
+            lon_input = st.number_input(
+                "Longitude", 
+                min_value=-180.0, 
+                max_value=180.0, 
+                value=float(st.session_state.lon), 
+                step=0.000001,
+                format="%.6f"
+            )
+        
+        if st.button("📍 Set Location", key="set_location_manual"):
+            st.session_state.lat = lat_input
+            st.session_state.lon = lon_input
+            st.success(f"📍 Location set to: {lat_input:.6f}, {lon_input:.6f}")
+            st.rerun()
     
     # Display current coordinates with better formatting
     st.markdown("### 📍 Current Location")
@@ -174,90 +188,50 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Interactive map for direct selection with click-anywhere functionality
-        st.info("🗺️ **Click anywhere on the map below to select a location directly!**")
+        # Interactive map for direct click-to-select functionality
+        st.info("🗺️ **Click anywhere on the map below to select that exact location!**")
         
-        # Initialize map mode in session state
-        if 'map_mode' not in st.session_state:
-            st.session_state.map_mode = 'select'  # 'select' or 'pan'
+        # Create folium map for click functionality
+        m = folium.Map(
+            location=[st.session_state.lat, st.session_state.lon],
+            zoom_start=6,
+            tiles='OpenStreetMap'
+        )
         
-        # Map mode toggle
-        st.markdown("### 🎛️ Map Controls")
-        col_mode1, col_mode2, col_mode3 = st.columns([1, 1, 1])
-        
-        with col_mode1:
-            if st.button("🎯 Select Mode", type="primary" if st.session_state.map_mode == 'select' else "secondary", key="select_mode"):
-                st.session_state.map_mode = 'select'
-                st.rerun()
-        
-        with col_mode2:
-            if st.button("🖱️ Pan Mode", type="primary" if st.session_state.map_mode == 'pan' else "secondary", key="pan_mode"):
-                st.session_state.map_mode = 'pan'
-                st.rerun()
-        
-        with col_mode3:
-            if st.button("🔄 Reset View", key="reset_view"):
-                st.session_state.lat = 37.7749
-                st.session_state.lon = -122.4194
-                st.success("Reset to San Francisco coordinates")
-                st.rerun()
-        
-        # Create a simple map for click-anywhere functionality
-        map_data = pd.DataFrame({
-            'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon]
-        })
+        # Add current location marker
+        folium.Marker(
+            [st.session_state.lat, st.session_state.lon],
+            popup=f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}",
+            tooltip="Current Location",
+            icon=folium.Icon(color='red', icon='star')
+        ).add_to(m)
         
         # Add historical points if available
         if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+            for idx, row in orig_points.iterrows():
+                folium.CircleMarker(
+                    [row['Latitude'], row['Longitude']],
+                    radius=5,
+                    popup=f"Historical Point {idx+1}<br>Lat: {row['Latitude']:.6f}<br>Lon: {row['Longitude']:.6f}",
+                    tooltip=f"Historical Point {idx+1}",
+                    color='blue',
+                    fill=True,
+                    fillColor='blue'
+                ).add_to(m)
         
-        # Display the map
-        st.map(map_data, zoom=6)
+        # Display the interactive map
+        map_data = st_folium(m, height=400, width=700, returned_objects=["last_clicked"])
         
-        # Click-anywhere functionality
-        if st.session_state.map_mode == 'select':
-            st.markdown("### 🎯 Click-Anywhere Selection")
-            st.info("**Click anywhere on the map above to select that exact location!**")
+        # Handle map clicks
+        if map_data["last_clicked"] is not None:
+            clicked_lat = map_data["last_clicked"]["lat"]
+            clicked_lon = map_data["last_clicked"]["lng"]
             
-            # Manual coordinate input for precise selection
-            st.markdown("### 🎯 Manual Coordinate Entry")
-            st.info("**Use the map above to find your desired location, then enter the exact coordinates below:**")
-            
-            col_coord1, col_coord2 = st.columns([1, 1])
-            
-            with col_coord1:
-                new_lat = st.number_input(
-                    "Latitude", 
-                    min_value=-90.0, 
-                    max_value=90.0, 
-                    value=float(st.session_state.lat), 
-                    step=0.000001,
-                    format="%.6f",
-                    key="manual_lat"
-                )
-            
-            with col_coord2:
-                new_lon = st.number_input(
-                    "Longitude", 
-                    min_value=-180.0, 
-                    max_value=180.0, 
-                    value=float(st.session_state.lon), 
-                    step=0.000001,
-                    format="%.6f",
-                    key="manual_lon"
-                )
-            
-            if st.button("📍 Set Location from Coordinates", type="primary", key="set_manual_coords"):
-                st.session_state.lat = new_lat
-                st.session_state.lon = new_lon
-                st.success(f"📍 Location set to: {new_lat:.6f}, {new_lon:.6f}")
-                st.rerun()
-        
-        else:  # Pan mode
-            st.markdown("### 🖱️ Pan Mode Active")
-            st.info("**Pan mode is active. Click and drag to move around the map, or switch to Select Mode to choose locations.**")
+            # Update session state with clicked coordinates
+            st.session_state.lat = clicked_lat
+            st.session_state.lon = clicked_lon
+            st.success(f"📍 Location selected from map click: {clicked_lat:.6f}, {clicked_lon:.6f}")
+            st.rerun()
         
         # Quick location buttons for common areas
         st.markdown("### 🎯 Quick Location Selection")
@@ -310,229 +284,48 @@ with col1:
                 st.success("📍 Set to Lassen National Park, CA")
                 st.rerun()
         
-        # Control buttons
-        st.markdown("### 🔧 Map Controls")
-        col_control1, col_control2 = st.columns([1, 1])
-        
-        with col_control1:
-            if st.button("🔄 Reset to Default", key="reset_click"):
-                st.session_state.lat = 37.7749
-                st.session_state.lon = -122.4194
-                st.success("Reset to San Francisco coordinates")
-                st.rerun()
-        
-        with col_control2:
-            if st.button("📍 Center on Current Point", key="center_click"):
-                st.success(f"Map centered on: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
-                st.rerun()
-        
-        st.markdown("💡 **Tip:** Click directly on any point on the map to select that location!")
+        st.markdown("💡 **Tip:** Click anywhere on the map above to select that exact location!")
 
 with col2:
     st.subheader("Prediction and Features")
+    
     if run:
-        try:
-            from feature_service import FeatureService
-        except ImportError:
-            import sys
-            sys.path.append(os.path.dirname(__file__))
-            from feature_service import FeatureService
-        svc = FeatureService()
-        status = st.empty()
-        progress_area = st.container()
-        progress_log = []
-
-        def on_progress(stage: str, message: str, data: dict):
-            progress_log.append({"stage": stage, "message": message, **data})
-            status.info(f"{stage}: {message}")
-
-        with st.spinner("Collecting data and computing features..."):
-            feats = svc.compute_features(
-                st.session_state.lat,
-                st.session_state.lon,
-                datetime.combine(date, datetime.min.time()),
-                progress_callback=on_progress,
-            )
-            pred = svc.predict(feats)
-
-        st.success("Data collection and prediction complete.")
-
-        with progress_area.expander("Detailed data collection log", expanded=True):
-            log_df = pd.DataFrame(progress_log)
-            st.dataframe(log_df, use_container_width=True)
-
-        st.metric("Stability Score", f"{pred['stability_score']:.3f}")
-        st.write("Stable:" if pred['stable'] else "Unstable:", pred['stable'])
-
-        st.markdown("### Feature Values (with units)")
-        units = feats.get('_units', {})
-        raw = feats.get('_raw', {})
-        display_rows = []
-        for k, v in feats.items():
-            if k.startswith('_'):
-                continue
-            display_rows.append({'Feature': k, 'Value': v, 'Units': units.get(k, '')})
-        feat_df = pd.DataFrame(display_rows)
-        st.dataframe(feat_df, use_container_width=True)
-
-        if 'hzname_values' in raw:
-            st.markdown("### SSURGO hzname raw values (sample)")
-            st.write(raw['hzname_values'][:20])
-
-        try:
-            import shap
-            required_features = [
-                'Slope From USGS Elevation Data',
-                'Slope From SSURGO',
-                'max_1_day_prcp',
-                'avg_30_day_prcp',
-                'max_3_day_prcp',
-                'avg_90_day_prcp_mean_flux',
-                'avg_365_day_prcp_mean_flux',
-                'Bulk Density',
-                'avg_60_day_prcp',
-                'avg_90_day_prcp',
-                'max_7_day_prcp',
-                'Deepest Soil Horizon Layer',
-            ]
-
-            feature_values = {}
-            for feature in required_features:
-                value = feats.get(feature, 0.0)
-                if pd.isna(value) or value is None:
-                    value = 0.0
-                feature_values[feature] = float(value)
-
-            X_current = pd.DataFrame([feature_values])
-
-            background_data = []
-            for _ in range(10):
-                bg_sample = {}
-                for feature in required_features:
-                    if 'Slope' in feature:
-                        bg_sample[feature] = np.random.uniform(0, 45)
-                    elif 'prcp' in feature and 'flux' not in feature:
-                        bg_sample[feature] = np.random.uniform(0, 50)
-                    elif 'flux' in feature:
-                        bg_sample[feature] = np.random.uniform(0, 0.001)
-                    elif 'Bulk Density' in feature:
-                        bg_sample[feature] = np.random.uniform(0.8, 2.0)
-                    elif 'Horizon' in feature:
-                        bg_sample[feature] = np.random.uniform(1, 6)
-                    else:
-                        bg_sample[feature] = np.random.uniform(0, 10)
-                background_data.append(bg_sample)
-
-            X_background = pd.DataFrame(background_data)
-
-            model = svc.model
-            explainer = shap.Explainer(model.predict_proba, X_background)
-            shap_values = explainer(X_current)
-
-            st.markdown("### SHAP Feature Contributions")
-
-            if len(shap_values.values.shape) == 3 and shap_values.values.shape[2] == 2:
-                shap_vals = shap_values.values[0, :, 1]
-                base_val = shap_values.base_values[0, 1]
-            else:
-                shap_vals = shap_values.values[0] if len(shap_values.values.shape) > 1 else shap_values.values
-                base_val = shap_values.base_values[0] if hasattr(shap_values, 'base_values') else 0
-
-            st.markdown("### Feature Contributions to Prediction")
-            contrib_data = []
-            for i, feature in enumerate(required_features):
-                contrib_data.append({
-                    'Feature': feature,
-                    'Value': f"{feature_values[feature]:.4f}",
-                    'SHAP Contribution': f"{shap_vals[i]:.6f}",
-                    'Impact': 'Positive' if shap_vals[i] > 0 else 'Negative' if shap_vals[i] < 0 else 'Neutral',
-                })
-
-            contrib_df = pd.DataFrame(contrib_data)
-            contrib_df = contrib_df.sort_values('SHAP Contribution', key=lambda x: x.astype(float).abs(), ascending=False)
-            st.dataframe(contrib_df, use_container_width=True)
-
-            st.markdown("### Prediction Breakdown")
-            total_contribution = float(np.sum(shap_vals))
-            final_prediction = base_val + total_contribution
-
-            breakdown_data = [
-                {'Component': 'Base Value (Model Average)', 'Value': f"{base_val:.6f}"},
-                {'Component': 'Total Feature Contributions', 'Value': f"{total_contribution:.6f}"},
-                {'Component': 'Final Prediction', 'Value': f"{final_prediction:.6f}"},
-                {'Component': 'Actual Model Output', 'Value': f"{pred['stability_score']:.6f}"},
-            ]
-            st.dataframe(pd.DataFrame(breakdown_data), use_container_width=True)
-
-            if abs(total_contribution) > 1e-6:
-                try:
-                    shap_explanation = shap.Explanation(
-                        values=shap_vals,
-                        base_values=base_val,
-                        data=np.array(list(feature_values.values())),
-                        feature_names=required_features,
-                    )
-
-                    fig, _ = plt.subplots(figsize=(10, 8))
-                    shap.plots.waterfall(shap_explanation, show=False)
-                    st.pyplot(fig)
-                except Exception as plot_error:
-                    st.info(f"Waterfall plot creation failed: {plot_error}")
-            else:
-                st.info("SHAP contributions are too small to visualize meaningfully. Check the feature contribution table above.")
-
-        except Exception as e:
-            st.error(f"SHAP analysis failed: {e}")
-            st.info("Showing basic feature importance instead:")
-
-            fallback_data = []
-            for feature in required_features:
-                value = feats.get(feature, 0.0)
-                if pd.isna(value):
-                    value = 0.0
-                fallback_data.append({
-                    'Feature': feature,
-                    'Value': f"{float(value):.4f}",
-                    'Relative Magnitude': 'High' if abs(float(value)) > 10 else 'Medium' if abs(float(value)) > 1 else 'Low',
-                })
-
-            st.dataframe(pd.DataFrame(fallback_data), use_container_width=True)
-
-with st.expander("Validate Playground logic against first 3 CSV rows"):
-    if st.button("Run validation (rows 0–2)"):
-        try:
+        with st.spinner("Computing prediction..."):
             try:
+                # Import the feature service
                 from feature_service import FeatureService
-            except ImportError:
-                import sys
-                sys.path.append(os.path.dirname(__file__))
-                from feature_service import FeatureService
-            svc = FeatureService()
-            base_dir = os.path.dirname(os.path.dirname(__file__))
-            csv_path = os.path.join(base_dir, 'data', 'Corrected_Input_Data.csv')
-            df = pd.read_csv(csv_path)
-            rows = df.iloc[[0, 1, 2]]
-            TOL_SSURGO = 1e-2
-            TOL_MET = 1e-2
-            TOL_SLOPE = 0.2
-            out = []
-            for idx, r in rows.iterrows():
-                plat = float(r['Latitude'])
-                plon = float(r['Longitude'])
-                pdate = datetime.strptime(str(r['event_date']), '%Y-%m-%d')
-                feats_i = svc.compute_features(plat, plon, pdate)
-                res = {
-                    'Row': idx,
-                    'USGS slope (deg)': feats_i.get('Slope From USGS Elevation Data', np.nan),
-                    'USGS slope expected': float(r['Slope From USGS Elevation Data']),
-                    'USGS slope OK': abs(float(feats_i.get('Slope From USGS Elevation Data', np.nan)) - float(r['Slope From USGS Elevation Data'])) < TOL_SLOPE,
-                    'Bulk Density OK': abs(float(feats_i.get('Bulk Density', np.nan)) - float(r['Bulk Density'])) < TOL_SSURGO,
-                    'Slope From SSURGO OK': abs(float(feats_i.get('Slope From SSURGO', np.nan)) - float(r['Slope From SSURGO'])) < TOL_SSURGO,
-                    'Deepest Horizon OK': abs(float(feats_i.get('Deepest Soil Horizon Layer', np.nan)) - float(r['Deepest Soil Horizon Layer'])) < TOL_SSURGO,
-                    'Max 1 Day OK': abs(float(feats_i.get('max_1_day_prcp', np.nan)) - float(r['max_1_day_prcp'])) < TOL_MET,
-                    'Avg 30 Day OK': abs(float(feats_i.get('avg_30_day_prcp', np.nan)) - float(r['avg_30_day_prcp'])) < TOL_MET,
-                }
-                out.append(res)
-            st.dataframe(pd.DataFrame(out), use_container_width=True)
-        except Exception as e:
-            st.error(f"Validation failed: {e}") 
+                
+                # Initialize the feature service
+                feature_service = FeatureService()
+                
+                # Get features for the selected location and date
+                features = feature_service.get_features_for_point(
+                    st.session_state.lat, 
+                    st.session_state.lon, 
+                    date
+                )
+                
+                # Make prediction
+                prediction = feature_service.predict_stability(features)
+                
+                # Display results
+                st.success("✅ Prediction completed!")
+                
+                # Show prediction
+                col_pred1, col_pred2 = st.columns([1, 1])
+                with col_pred1:
+                    st.metric("Stability Score", f"{prediction['stability_score']:.3f}")
+                with col_pred2:
+                    risk_level = "High" if prediction['stability_score'] < 0.5 else "Medium" if prediction['stability_score'] < 0.7 else "Low"
+                    st.metric("Risk Level", risk_level)
+                
+                # Show features
+                st.subheader("📊 Computed Features")
+                feature_df = pd.DataFrame(list(features.items()), columns=['Feature', 'Value'])
+                st.dataframe(feature_df, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Prediction failed: {e}")
+                st.exception(e)
+    else:
+        st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
