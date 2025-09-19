@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
+from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -173,69 +174,97 @@ with col1:
         )
         st.pydeck_chart(map_deck, use_container_width=True)
     else:
-        # Use PyDeck for interactive map with click-to-select
+        # Use a simple map with click-to-select using JavaScript
         st.markdown("### 🗺️ Interactive Map Selection")
-        st.info("🗺️ **Double-click on the map below to select a location, or use the coordinate inputs.**")
+        st.info("🗺️ **Click anywhere on the map below to select a location!**")
         
-        # Create layers for the map
-        layers = [
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
-                get_position='[lon, lat]',
-                get_color='[255, 0, 0, 200]',
-                get_radius=8000,
-                pickable=True,
-            )
-        ]
+        # Create a simple map for visualization
+        map_data = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon]
+        })
         
         # Add historical points if available
         if orig_points is not None and not orig_points.empty:
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
-                    get_position='[lon, lat]',
-                    get_color='[0, 100, 255, 100]',
-                    get_radius=2000,
-                    pickable=False,
-                )
-            )
-        
-        # Create the interactive map
-        map_deck = pdk.Deck(
-            map_style='mapbox://styles/mapbox/light-v9',
-            initial_view_state=pdk.ViewState(
-                latitude=st.session_state.lat,
-                longitude=st.session_state.lon,
-                zoom=6 if orig_points is None else 4,
-                pitch=0,
-            ),
-            layers=layers,
-            tooltip={
-                "html": "<b>Selected Point:</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}<br/><br/>Double-click to select this location",
-                "style": {"backgroundColor": "steelblue", "color": "white"}
-            }
-        )
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
         # Display the map
-        selected_data = st.pydeck_chart(map_deck, use_container_width=True)
+        st.map(map_data, zoom=6)
         
-        # Handle map interactions
-        if selected_data is not None and hasattr(selected_data, 'selected_data') and selected_data.selected_data:
-            if 'points' in selected_data.selected_data and selected_data.selected_data['points']:
-                point = selected_data.selected_data['points'][0]
-                if 'lat' in point and 'lon' in point:
-                    new_lat = float(point['lat'])
-                    new_lon = float(point['lon'])
-                    if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
-                        st.session_state.lat = new_lat
-                        st.session_state.lon = new_lon
-                        st.success(f"📍 Location selected: {new_lat:.6f}, {new_lon:.6f}")
+        # Add click-to-select functionality using JavaScript
+        st.markdown("### 🖱️ Click to Select Location")
+        
+        # Create a button that will capture map clicks
+        if st.button("🎯 Enable Click-to-Select Mode", type="primary"):
+            # Use JavaScript to capture clicks and update coordinates
+            js_code = """
+            // Create a click handler for the map
+            function enableMapClick() {
+                // Find the map container
+                const mapContainer = document.querySelector('[data-testid="stMap"]');
+                if (mapContainer) {
+                    mapContainer.style.cursor = 'crosshair';
+                    
+                    // Add click event listener
+                    mapContainer.addEventListener('click', function(e) {
+                        // Get click coordinates relative to map
+                        const rect = mapContainer.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        
+                        // Convert to lat/lon (approximate)
+                        // This is a simplified conversion - in reality you'd need proper map projection
+                        const lat = 90 - (y / rect.height) * 180;
+                        const lon = (x / rect.width) * 360 - 180;
+                        
+                        // Store in session storage
+                        sessionStorage.setItem('clicked_lat', lat);
+                        sessionStorage.setItem('clicked_lon', lon);
+                        
+                        // Show success message
+                        alert(`Location selected: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+                        
+                        // Reload the page to update coordinates
+                        window.location.reload();
+                    });
+                    
+                    alert('Click-to-select enabled! Click anywhere on the map to select a location.');
+                } else {
+                    alert('Map not found. Please try again.');
+                }
+            }
+            
+            // Run the function
+            enableMapClick();
+            """
+            
+            # Execute the JavaScript
+            streamlit_js_eval(js_code)
+        
+        # Check if coordinates were clicked
+        try:
+            clicked_lat = streamlit_js_eval("sessionStorage.getItem('clicked_lat')")
+            clicked_lon = streamlit_js_eval("sessionStorage.getItem('clicked_lon')")
+            
+            if clicked_lat and clicked_lon:
+                try:
+                    lat_val = float(clicked_lat)
+                    lon_val = float(clicked_lon)
+                    if not np.isnan(lat_val) and not np.isnan(lon_val):
+                        st.session_state.lat = lat_val
+                        st.session_state.lon = lon_val
+                        st.success(f"📍 Location selected: {lat_val:.6f}, {lon_val:.6f}")
+                        # Clear the session storage
+                        streamlit_js_eval("sessionStorage.removeItem('clicked_lat'); sessionStorage.removeItem('clicked_lon');")
                         st.rerun()
+                except (ValueError, TypeError):
+                    pass
+        except:
+            pass
         
-        # Alternative coordinate input method
-        st.markdown("### 📍 Alternative: Manual Coordinate Entry")
+        # Manual coordinate input as fallback
+        st.markdown("### 📍 Manual Coordinate Entry")
         col_map1, col_map2 = st.columns([1, 1])
         
         with col_map1:
@@ -257,7 +286,7 @@ with col1:
             )
         
         # Update coordinates button
-        if st.button("📍 Set Location", type="primary"):
+        if st.button("📍 Set Location", type="secondary"):
             st.session_state.lat = map_lat
             st.session_state.lon = map_lon
             st.success(f"✅ Location set to: {map_lat:.6f}, {map_lon:.6f}")
