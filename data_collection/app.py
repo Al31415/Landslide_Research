@@ -135,49 +135,14 @@ with col1:
     # Compute button
     run = st.button("🚀 Compute Prediction", type="primary")
 
-    # Single, clean map interface (conditional render per mode)
+    # Map interface - different for each input method
     st.subheader("Map View")
 
-    if input_method != "📍 Click on Map":
-        # Use pydeck for non-click modes (nice visualization, performance)
-        layers = [
-        pdk.Layer(
-            "ScatterplotLayer",
-                data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
-            get_position='[lon, lat]',
-                get_color='[255, 0, 0, 200]',
-                get_radius=8000,
-                pickable=False,
-        )
-    ]
-    if orig_points is not None and not orig_points.empty:
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
-                get_position='[lon, lat]',
-                get_color='[0, 100, 255, 100]',
-                get_radius=2000,
-                    pickable=False,
-                )
-            )
-        map_deck = pdk.Deck(
-            map_style='mapbox://styles/mapbox/light-v9',
-            initial_view_state=pdk.ViewState(
-                latitude=st.session_state.lat,
-                longitude=st.session_state.lon,
-                zoom=6 if orig_points is None else 4,
-                pitch=0,
-            ),
-            layers=layers,
-        )
-        st.pydeck_chart(map_deck, use_container_width=True)
-    else:
-        # Use a simple map with coordinate input
-        st.markdown("### 🗺️ Interactive Map Selection")
-        st.info("🗺️ **Pan and zoom the map below to find your location, then enter coordinates manually.**")
+    if input_method == "🔍 Search Location":
+        # Simple visualization map for search results
+        st.info("🗺️ **Map showing your searched location and historical data points.**")
         
-        # Create a simple map for visualization
+        # Create map data
         map_data = pd.DataFrame({
             'lat': [st.session_state.lat],
             'lon': [st.session_state.lon]
@@ -188,146 +153,89 @@ with col1:
             hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
             map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
-        # Display the map
         st.map(map_data, zoom=6)
+
+    elif input_method == "⌨️ Manual Entry":
+        # Simple visualization map for manual entry
+        st.info("🗺️ **Map showing your manually entered coordinates and historical data points.**")
         
-        # Quick location selection buttons
+        # Create map data
+        map_data = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon]
+        })
+        
+        # Add historical points if available
+        if orig_points is not None and not orig_points.empty:
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+        
+        st.map(map_data, zoom=6)
+
+    elif input_method == "📍 Click on Map":
+        # Interactive map for direct selection
+        st.info("🗺️ **Click on the map below to select a location directly!**")
+        
+        # Create an interactive map with clickable points
+        layers = [
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
+                get_position='[lon, lat]',
+                get_color='[255, 0, 0, 200]',
+                get_radius=8000,
+                pickable=True,
+            )
+        ]
+        
+        # Add historical points if available
+        if orig_points is not None and not orig_points.empty:
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
+                    get_position='[lon, lat]',
+                    get_color='[0, 100, 255, 100]',
+                    get_radius=2000,
+                    pickable=True,
+                )
+            )
+        
+        # Create the interactive map
+        map_deck = pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            initial_view_state=pdk.ViewState(
+                latitude=st.session_state.lat,
+                longitude=st.session_state.lon,
+                zoom=6 if orig_points is None else 4,
+                pitch=0,
+            ),
+            layers=layers,
+            tooltip={
+                "html": "<b>Click to select this location</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}",
+                "style": {"backgroundColor": "steelblue", "color": "white"}
+            }
+        )
+        
+        # Display the map and handle clicks
+        selected_data = st.pydeck_chart(map_deck, use_container_width=True)
+        
+        # Handle map clicks
+        if selected_data is not None and hasattr(selected_data, 'selected_data') and selected_data.selected_data:
+            if 'points' in selected_data.selected_data and selected_data.selected_data['points']:
+                point = selected_data.selected_data['points'][0]
+                if 'lat' in point and 'lon' in point:
+                    new_lat = float(point['lat'])
+                    new_lon = float(point['lon'])
+                    if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
+                        st.session_state.lat = new_lat
+                        st.session_state.lon = new_lon
+                        st.success(f"📍 Location selected from map: {new_lat:.6f}, {new_lon:.6f}")
+                        st.rerun()
+        
+        # Quick location buttons for common areas
         st.markdown("### 🎯 Quick Location Selection")
-        st.markdown("**Click any button below to instantly set coordinates for these landslide-prone locations:**")
-        
-        col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
-        
-        with col_quick1:
-            if st.button("🏔️ Mount Rainier, WA", key="rainier_main"):
-                st.session_state.lat = 46.8523
-                st.session_state.lon = -121.7603
-                st.success("📍 Set to Mount Rainier, WA")
-                st.rerun()
-        
-        with col_quick2:
-            if st.button("🌋 Mount St. Helens, WA", key="helens_main"):
-                st.session_state.lat = 46.1914
-                st.session_state.lon = -122.1956
-                st.success("📍 Set to Mount St. Helens, WA")
-                st.rerun()
-        
-        with col_quick3:
-            if st.button("🏔️ Yosemite, CA", key="yosemite_main"):
-                st.session_state.lat = 37.8651
-                st.session_state.lon = -119.5383
-                st.success("📍 Set to Yosemite, CA")
-                st.rerun()
-        
-        # Additional quick locations
-        col_quick4, col_quick5, col_quick6 = st.columns([1, 1, 1])
-        
-        with col_quick4:
-            if st.button("🌲 Olympic NP, WA", key="olympic_main"):
-                st.session_state.lat = 47.8021
-                st.session_state.lon = -123.6044
-                st.success("📍 Set to Olympic National Park, WA")
-                st.rerun()
-        
-        with col_quick5:
-            if st.button("🏔️ Glacier NP, MT", key="glacier_main"):
-                st.session_state.lat = 48.7596
-                st.session_state.lon = -113.7870
-                st.success("📍 Set to Glacier National Park, MT")
-                st.rerun()
-        
-        with col_quick6:
-            if st.button("🌋 Lassen NP, CA", key="lassen_main"):
-                st.session_state.lat = 40.4983
-                st.session_state.lon = -121.4209
-                st.success("📍 Set to Lassen National Park, CA")
-                st.rerun()
-        
-        # Manual coordinate input
-        st.markdown("### 📍 Manual Coordinate Entry")
-        st.markdown("**Enter coordinates manually or use the quick selection buttons above:**")
-        
-        col_map1, col_map2 = st.columns([1, 1])
-        
-        with col_map1:
-            map_lat = st.number_input(
-                "Latitude",
-                value=float(st.session_state.lat),
-                format="%0.6f",
-                key="map_lat_input",
-                help="Enter the latitude manually"
-            )
-        
-        with col_map2:
-            map_lon = st.number_input(
-                "Longitude", 
-                value=float(st.session_state.lon),
-                format="%0.6f",
-                key="map_lon_input",
-                help="Enter the longitude manually"
-            )
-        
-        # Update coordinates button
-        if st.button("📍 Set Location", type="primary", key="set_location_manual"):
-            st.session_state.lat = map_lat
-            st.session_state.lon = map_lon
-            st.success(f"✅ Location set to: {map_lat:.6f}, {map_lon:.6f}")
-            st.rerun()
-        
-        # Instructions
-        st.markdown("### 📖 How to Use This Map")
-        st.markdown("""
-        1. **🗺️ Pan and zoom** the map above to explore different areas
-        2. **🎯 Use quick buttons** to instantly select common landslide-prone locations
-        3. **⌨️ Enter coordinates manually** if you know the exact lat/lon
-        4. **📍 Click "Set Location"** to update your selection
-        5. **🚀 Run prediction** with your selected coordinates
-        """)
-    
-    # Map interaction section - only show for "Click on Map" method
-    if input_method == "📍 Click on Map":
-        st.markdown("### 📍 Map-Based Coordinate Selection")
-        
-        # Clear instructions
-        st.info("🗺️ **Use the map above to find your location, then enter the coordinates below:**")
-        
-        # Coordinate input with clear labels
-        col_coord1, col_coord2 = st.columns([1, 1])
-        
-        with col_coord1:
-            selected_lat = st.number_input(
-                "Latitude",
-                value=float(st.session_state.lat),
-                format="%0.6f",
-                key="selected_lat",
-                help="Enter the latitude of your desired location"
-            )
-        
-        with col_coord2:
-            selected_lon = st.number_input(
-                "Longitude", 
-                value=float(st.session_state.lon),
-                format="%0.6f",
-                key="selected_lon",
-                help="Enter the longitude of your desired location"
-            )
-        
-        # Update coordinates button
-        if st.button("📍 Set Location", type="primary", key="set_location_selected"):
-            st.session_state.lat = selected_lat
-            st.session_state.lon = selected_lon
-            st.success(f"✅ Location set to: {selected_lat:.6f}, {selected_lon:.6f}")
-            st.rerun()
-        
-        # Instructions for using the map
-        st.markdown("**How to use the map:**")
-        st.markdown("1. 🗺️ **Pan and zoom** the map above to find your desired location")
-        st.markdown("2. 📍 **Look at the coordinates** shown in the map tooltip or estimate them")
-        st.markdown("3. ⌨️ **Enter the coordinates** in the input fields above")
-        st.markdown("4. 🎯 **Click 'Set Location'** to update your selection")
-        
-        # Quick location buttons for common landslide-prone areas
-        st.markdown("### 🎯 Quick Location Selection")
-        st.markdown("**Or click any button below to instantly set coordinates for these landslide-prone locations:**")
+        st.markdown("**Or click any button below to instantly set coordinates:**")
         
         col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
         
@@ -381,18 +289,18 @@ with col1:
         col_control1, col_control2 = st.columns([1, 1])
         
         with col_control1:
-            if st.button("🔄 Reset to Default"):
+            if st.button("🔄 Reset to Default", key="reset_click"):
                 st.session_state.lat = 37.7749
                 st.session_state.lon = -122.4194
                 st.success("Reset to San Francisco coordinates")
                 st.rerun()
         
         with col_control2:
-            if st.button("📍 Center on Current Point"):
+            if st.button("📍 Center on Current Point", key="center_click"):
                 st.success(f"Map centered on: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
                 st.rerun()
         
-        st.markdown("💡 **Tip:** Pan and zoom the map to find your location, then enter the exact coordinates in the input fields above!")
+        st.markdown("💡 **Tip:** Click directly on any point on the map to select that location!")
 
 with col2:
     st.subheader("Prediction and Features")
