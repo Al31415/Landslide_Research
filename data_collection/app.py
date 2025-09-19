@@ -140,24 +140,24 @@ with col1:
 
     if input_method != "📍 Click on Map":
         # Use pydeck for non-click modes (nice visualization, performance)
-        layers = [
-            pdk.Layer(
-                "ScatterplotLayer",
+    layers = [
+        pdk.Layer(
+            "ScatterplotLayer",
                 data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
-                get_position='[lon, lat]',
+            get_position='[lon, lat]',
                 get_color='[255, 0, 0, 200]',
                 get_radius=8000,
                 pickable=False,
-            )
-        ]
-        if orig_points is not None and not orig_points.empty:
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
-                    get_position='[lon, lat]',
-                    get_color='[0, 100, 255, 100]',
-                    get_radius=2000,
+        )
+    ]
+    if orig_points is not None and not orig_points.empty:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
+                get_position='[lon, lat]',
+                get_color='[0, 100, 255, 100]',
+                get_radius=2000,
                     pickable=False,
                 )
             )
@@ -173,47 +173,91 @@ with col1:
         )
         st.pydeck_chart(map_deck, use_container_width=True)
     else:
-        # Use a simple coordinate input approach with map visualization
+        # Use PyDeck for interactive map with click-to-select
         st.markdown("### 🗺️ Interactive Map Selection")
-        st.info("🗺️ **Pan and zoom the map below to find your location, then enter the coordinates manually.**")
+        st.info("🗺️ **Double-click on the map below to select a location, or use the coordinate inputs.**")
         
-        # Create a simple map for visualization only
-        map_data = pd.DataFrame({
-            'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon]
-        })
+        # Create layers for the map
+        layers = [
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
+                get_position='[lon, lat]',
+                get_color='[255, 0, 0, 200]',
+                get_radius=8000,
+                pickable=True,
+            )
+        ]
         
         # Add historical points if available
         if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}),
+                    get_position='[lon, lat]',
+                    get_color='[0, 100, 255, 100]',
+                    get_radius=2000,
+                    pickable=False,
+                )
+            )
         
-        st.map(map_data, zoom=6)
+        # Create the interactive map
+        map_deck = pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            initial_view_state=pdk.ViewState(
+                latitude=st.session_state.lat,
+                longitude=st.session_state.lon,
+                zoom=6 if orig_points is None else 4,
+                pitch=0,
+            ),
+            layers=layers,
+            tooltip={
+                "html": "<b>Selected Point:</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}<br/><br/>Double-click to select this location",
+                "style": {"backgroundColor": "steelblue", "color": "white"}
+            }
+        )
         
-        # Coordinate input with current map center
-        st.markdown("### 📍 Enter Coordinates from Map")
+        # Display the map
+        selected_data = st.pydeck_chart(map_deck, use_container_width=True)
+        
+        # Handle map interactions
+        if selected_data is not None and hasattr(selected_data, 'selected_data') and selected_data.selected_data:
+            if 'points' in selected_data.selected_data and selected_data.selected_data['points']:
+                point = selected_data.selected_data['points'][0]
+                if 'lat' in point and 'lon' in point:
+                    new_lat = float(point['lat'])
+                    new_lon = float(point['lon'])
+                    if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
+                        st.session_state.lat = new_lat
+                        st.session_state.lon = new_lon
+                        st.success(f"📍 Location selected: {new_lat:.6f}, {new_lon:.6f}")
+                        st.rerun()
+        
+        # Alternative coordinate input method
+        st.markdown("### 📍 Alternative: Manual Coordinate Entry")
         col_map1, col_map2 = st.columns([1, 1])
         
         with col_map1:
             map_lat = st.number_input(
-                "Latitude from map",
+                "Latitude",
                 value=float(st.session_state.lat),
                 format="%0.6f",
                 key="map_lat_input",
-                help="Enter the latitude you see on the map"
+                help="Enter the latitude manually"
             )
         
         with col_map2:
             map_lon = st.number_input(
-                "Longitude from map", 
+                "Longitude", 
                 value=float(st.session_state.lon),
                 format="%0.6f",
                 key="map_lon_input",
-                help="Enter the longitude you see on the map"
+                help="Enter the longitude manually"
             )
         
         # Update coordinates button
-        if st.button("📍 Set Location from Map", type="primary"):
+        if st.button("📍 Set Location", type="primary"):
             st.session_state.lat = map_lat
             st.session_state.lon = map_lon
             st.success(f"✅ Location set to: {map_lat:.6f}, {map_lon:.6f}")
