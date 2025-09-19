@@ -196,16 +196,12 @@ with col1:
         # Create map data with current location (red dot) and historical points
         map_data = pd.DataFrame({
             'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon],
-            'size': [200],
-            'color': [255, 0, 0, 255]  # Red for current location
+            'lon': [st.session_state.lon]
         })
         
         # Add historical points if available (blue dots)
         if orig_points is not None and not orig_points.empty:
             hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-            hist_data['size'] = 100
-            hist_data['color'] = [0, 0, 255, 150]  # Blue for historical points
             map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
         # Display the map using standard Streamlit map
