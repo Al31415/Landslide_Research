@@ -7,9 +7,6 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
-import plotly.graph_objects as go
-import plotly.express as px
-from streamlit_plotly_events import plotly_events
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -189,91 +186,82 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Interactive map for direct click-to-select functionality using Plotly
-        st.info("🗺️ **Click anywhere on the map below to select that exact location!**")
+        # Interactive coordinate selection using sliders and visual map
+        st.info("🗺️ **Use the sliders below to select coordinates, or use the quick location buttons!**")
         
-        try:
-            # Create Plotly scatter mapbox for click functionality
-            fig = go.Figure()
-            
-            # Add current location marker
-            fig.add_trace(go.Scattermapbox(
-                lat=[st.session_state.lat],
-                lon=[st.session_state.lon],
-                mode='markers',
-                marker=dict(
-                    size=15,
-                    color='red',
-                    symbol='star'
-                ),
-                text=[f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}"],
-                hovertemplate="%{text}<extra></extra>",
-                name="Current Location"
-            ))
-            
-            # Add historical points if available
-            if orig_points is not None and not orig_points.empty:
-                fig.add_trace(go.Scattermapbox(
-                    lat=orig_points['Latitude'].tolist(),
-                    lon=orig_points['Longitude'].tolist(),
-                    mode='markers',
-                    marker=dict(
-                        size=8,
-                        color='blue',
-                        symbol='circle'
-                    ),
-                    text=[f"Historical Point {i+1}<br>Lat: {row['Latitude']:.6f}<br>Lon: {row['Longitude']:.6f}" 
-                          for i, row in orig_points.iterrows()],
-                    hovertemplate="%{text}<extra></extra>",
-                    name="Historical Points"
-                ))
-            
-            # Update layout for mapbox
-            fig.update_layout(
-                mapbox=dict(
-                    style="open-street-map",
-                    center=dict(lat=st.session_state.lat, lon=st.session_state.lon),
-                    zoom=6
-                ),
-                margin=dict(r=0, t=0, l=0, b=0),
-                height=400,
-                showlegend=True
+        # Create two columns for latitude and longitude sliders
+        col_lat_slider, col_lon_slider = st.columns([1, 1])
+        
+        with col_lat_slider:
+            st.markdown("### 🌍 Latitude")
+            new_lat = st.slider(
+                "Latitude", 
+                min_value=24.0,  # Southern border of US
+                max_value=49.0,  # Northern border of US
+                value=float(st.session_state.lat), 
+                step=0.001,
+                format="%.3f",
+                key="lat_slider"
             )
-            
-            # Display the interactive map and capture clicks
-            selected_points = plotly_events(fig, click_event=True, hover_event=False, select_event=False, override_height=400)
-            
-            # Handle map clicks
-            if selected_points:
-                # Get the last clicked point
-                last_click = selected_points[-1]
-                if 'lat' in last_click and 'lon' in last_click:
-                    clicked_lat = last_click['lat']
-                    clicked_lon = last_click['lon']
-                    
-                    # Update session state with clicked coordinates
-                    st.session_state.lat = clicked_lat
-                    st.session_state.lon = clicked_lon
-                    st.success(f"📍 Location selected from map click: {clicked_lat:.6f}, {clicked_lon:.6f}")
-                    st.rerun()
-                
-        except Exception as e:
-            st.error(f"Plotly map failed to load: {e}")
-            st.info("Falling back to basic map visualization...")
-            
-            # Fallback to regular st.map()
-            map_data = pd.DataFrame({
-                'lat': [st.session_state.lat],
-                'lon': [st.session_state.lon]
-            })
-            
-            # Add historical points if available
-            if orig_points is not None and not orig_points.empty:
-                hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-                map_data = pd.concat([map_data, hist_data], ignore_index=True)
-            
-            st.map(map_data, zoom=6)
-            st.warning("⚠️ Click-to-select not available in fallback mode. Use quick location buttons below.")
+        
+        with col_lon_slider:
+            st.markdown("### 🌍 Longitude")
+            new_lon = st.slider(
+                "Longitude", 
+                min_value=-125.0,  # Western border of US
+                max_value=-66.0,   # Eastern border of US
+                value=float(st.session_state.lon), 
+                step=0.001,
+                format="%.3f",
+                key="lon_slider"
+            )
+        
+        # Update coordinates when sliders change
+        if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.success(f"📍 Location updated: {new_lat:.3f}, {new_lon:.3f}")
+            st.rerun()
+        
+        # Display the map with current coordinates
+        st.markdown("### 🗺️ Map View")
+        map_data = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon]
+        })
+        
+        # Add historical points if available
+        if orig_points is not None and not orig_points.empty:
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+        
+        st.map(map_data, zoom=6)
+        
+        # Fine-tuning controls
+        st.markdown("### 🎯 Fine-Tuning Controls")
+        st.info("Use the buttons below for precise adjustments:")
+        
+        col_fine1, col_fine2, col_fine3, col_fine4 = st.columns([1, 1, 1, 1])
+        
+        with col_fine1:
+            if st.button("⬆️ North", key="north_fine"):
+                st.session_state.lat = min(49.0, st.session_state.lat + 0.01)
+                st.rerun()
+        
+        with col_fine2:
+            if st.button("⬇️ South", key="south_fine"):
+                st.session_state.lat = max(24.0, st.session_state.lat - 0.01)
+                st.rerun()
+        
+        with col_fine3:
+            if st.button("⬅️ West", key="west_fine"):
+                st.session_state.lon = max(-125.0, st.session_state.lon - 0.01)
+                st.rerun()
+        
+        with col_fine4:
+            if st.button("➡️ East", key="east_fine"):
+                st.session_state.lon = min(-66.0, st.session_state.lon + 0.01)
+                st.rerun()
         
         # Quick location buttons for common areas
         st.markdown("### 🎯 Quick Location Selection")
