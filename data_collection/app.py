@@ -186,8 +186,8 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Interactive coordinate selection using sliders and visual map
-        st.info("🗺️ **Use the sliders below to select coordinates, or use the quick location buttons!**")
+        # Interactive coordinate selection with bidirectional sync
+        st.info("🗺️ **Move the sliders OR click on the map to select coordinates!**")
         
         # Create two columns for latitude and longitude sliders
         col_lat_slider, col_lon_slider = st.columns([1, 1])
@@ -223,19 +223,78 @@ with col1:
             st.success(f"📍 Location updated: {new_lat:.3f}, {new_lon:.3f}")
             st.rerun()
         
-        # Display the map with current coordinates
-        st.markdown("### 🗺️ Map View")
-        map_data = pd.DataFrame({
-            'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon]
-        })
+        # Display the interactive PyDeck map
+        st.markdown("### 🗺️ Interactive Map")
+        st.info("💡 **Click anywhere on the map to select that location!**")
         
-        # Add historical points if available
+        # Create PyDeck map for click interaction
+        view_state = pdk.ViewState(
+            latitude=st.session_state.lat,
+            longitude=st.session_state.lon,
+            zoom=6,
+            pitch=0
+        )
+        
+        # Create layers
+        layers = []
+        
+        # Current location layer (red)
+        current_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=pd.DataFrame({
+                'lat': [st.session_state.lat],
+                'lon': [st.session_state.lon],
+                'color': [[255, 0, 0, 200]]  # Red
+            }),
+            get_position=['lon', 'lat'],
+            get_color='color',
+            get_radius=200,
+            pickable=True
+        )
+        layers.append(current_layer)
+        
+        # Historical points layer (blue)
         if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-            map_data = pd.concat([map_data, hist_data], ignore_index=True)
+            hist_data = orig_points.copy()
+            hist_data['color'] = [[0, 0, 255, 150] for _ in range(len(hist_data))]  # Blue
+            
+            hist_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=hist_data,
+                get_position=['Longitude', 'Latitude'],
+                get_color='color',
+                get_radius=100,
+                pickable=True
+            )
+            layers.append(hist_layer)
         
-        st.map(map_data, zoom=6)
+        # Create the map
+        deck = pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            initial_view_state=view_state,
+            layers=layers,
+            tooltip={
+                "html": "<b>Latitude:</b> {lat}<br/><b>Longitude:</b> {lon}",
+                "style": {"backgroundColor": "steelblue", "color": "white"}
+            }
+        )
+        
+        # Display the map and capture clicks
+        selected_data = st.pydeck_chart(deck, use_container_width=True)
+        
+        # Handle map clicks
+        if selected_data and hasattr(selected_data, 'selected_data') and selected_data.selected_data:
+            if 'points' in selected_data.selected_data and selected_data.selected_data['points']:
+                # Get the clicked point
+                clicked_point = selected_data.selected_data['points'][0]
+                if 'position' in clicked_point:
+                    clicked_lon, clicked_lat = clicked_point['position']
+                    
+                    # Update session state with clicked coordinates
+                    st.session_state.lat = clicked_lat
+                    st.session_state.lon = clicked_lon
+                    st.success(f"📍 Location selected from map click: {clicked_lat:.3f}, {clicked_lon:.3f}")
+                    st.rerun()
         
         # Fine-tuning controls
         st.markdown("### 🎯 Fine-Tuning Controls")
