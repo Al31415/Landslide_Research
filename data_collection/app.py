@@ -328,6 +328,4 @@ with col2:
                 st.error(f"Prediction failed: {e}")
                 st.exception(e)
     else:
-        st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
-
-            st.error(f"Validation failed: {e}") 
+        st.info("👆 Click 'Compute Prediction' to analyze the selected location.") 
