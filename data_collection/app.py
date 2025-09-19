@@ -191,47 +191,65 @@ with col1:
         # Interactive map for direct click-to-select functionality
         st.info("🗺️ **Click anywhere on the map below to select that exact location!**")
         
-        # Create folium map for click functionality - NO FUNCTIONS!
-        m = folium.Map(
-            location=[st.session_state.lat, st.session_state.lon],
-            zoom_start=6,
-            tiles='OpenStreetMap',
-            control_scale=True
-        )
-        
-        # Add current location marker - simple, no functions
-        folium.Marker(
-            [st.session_state.lat, st.session_state.lon],
-            popup=f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}",
-            tooltip="Current Location"
-        ).add_to(m)
-        
-        # Add historical points if available - simple, no functions
-        if orig_points is not None and not orig_points.empty:
-            for idx, row in orig_points.iterrows():
-                folium.CircleMarker(
-                    [row['Latitude'], row['Longitude']],
-                    radius=5,
-                    popup=f"Historical Point {idx+1}<br>Lat: {row['Latitude']:.6f}<br>Lon: {row['Longitude']:.6f}",
-                    tooltip=f"Historical Point {idx+1}",
-                    color='blue',
-                    fill=True,
-                    fillColor='blue'
-                ).add_to(m)
-        
-        # Display the interactive map
-        map_data = st_folium(m, height=400, width=700, returned_objects=["last_clicked"])
-        
-        # Handle map clicks
-        if map_data["last_clicked"] is not None:
-            clicked_lat = map_data["last_clicked"]["lat"]
-            clicked_lon = map_data["last_clicked"]["lng"]
+        try:
+            # Create folium map for click functionality - NO FUNCTIONS!
+            m = folium.Map(
+                location=[st.session_state.lat, st.session_state.lon],
+                zoom_start=6,
+                tiles='OpenStreetMap'
+            )
             
-            # Update session state with clicked coordinates
-            st.session_state.lat = clicked_lat
-            st.session_state.lon = clicked_lon
-            st.success(f"📍 Location selected from map click: {clicked_lat:.6f}, {clicked_lon:.6f}")
-            st.rerun()
+            # Add current location marker - simple, no functions
+            folium.Marker(
+                [st.session_state.lat, st.session_state.lon],
+                popup=f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}",
+                tooltip="Current Location"
+            ).add_to(m)
+            
+            # Add historical points if available - simple, no functions
+            if orig_points is not None and not orig_points.empty:
+                for idx, row in orig_points.iterrows():
+                    folium.CircleMarker(
+                        [row['Latitude'], row['Longitude']],
+                        radius=5,
+                        popup=f"Historical Point {idx+1}<br>Lat: {row['Latitude']:.6f}<br>Lon: {row['Longitude']:.6f}",
+                        tooltip=f"Historical Point {idx+1}",
+                        color='blue',
+                        fill=True,
+                        fillColor='blue'
+                    ).add_to(m)
+            
+            # Display the interactive map
+            map_data = st_folium(m, height=400, width=700, returned_objects=["last_clicked"])
+            
+            # Handle map clicks
+            if map_data and map_data.get("last_clicked") is not None:
+                clicked_lat = map_data["last_clicked"]["lat"]
+                clicked_lon = map_data["last_clicked"]["lng"]
+                
+                # Update session state with clicked coordinates
+                st.session_state.lat = clicked_lat
+                st.session_state.lon = clicked_lon
+                st.success(f"📍 Location selected from map click: {clicked_lat:.6f}, {clicked_lon:.6f}")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Folium map failed to load: {e}")
+            st.info("Falling back to basic map visualization...")
+            
+            # Fallback to regular st.map()
+            map_data = pd.DataFrame({
+                'lat': [st.session_state.lat],
+                'lon': [st.session_state.lon]
+            })
+            
+            # Add historical points if available
+            if orig_points is not None and not orig_points.empty:
+                hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+                map_data = pd.concat([map_data, hist_data], ignore_index=True)
+            
+            st.map(map_data, zoom=6)
+            st.warning("⚠️ Click-to-select not available in fallback mode. Use quick location buttons below.")
         
         # Quick location buttons for common areas
         st.markdown("### 🎯 Quick Location Selection")
