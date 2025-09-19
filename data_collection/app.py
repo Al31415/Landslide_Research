@@ -217,21 +217,19 @@ with col1:
             }
         )
         
-        # Display the map and handle clicks
-        selected_data = st.pydeck_chart(map_deck, use_container_width=True)
+        # Display the map
+        st.pydeck_chart(map_deck, use_container_width=True)
         
-        # Handle map clicks
-        if selected_data is not None and hasattr(selected_data, 'selected_data') and selected_data.selected_data:
-            if 'points' in selected_data.selected_data and selected_data.selected_data['points']:
-                point = selected_data.selected_data['points'][0]
-                if 'lat' in point and 'lon' in point:
-                    new_lat = float(point['lat'])
-                    new_lon = float(point['lon'])
-                    if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
-                        st.session_state.lat = new_lat
-                        st.session_state.lon = new_lon
-                        st.success(f"📍 Location selected from map: {new_lat:.6f}, {new_lon:.6f}")
-                        st.rerun()
+        # Add instructions for map interaction
+        st.markdown("### 🖱️ How to Select a Location")
+        st.info("""
+        **Current PyDeck limitation:** You can only click on existing markers (red and blue dots).
+        
+        **To select a new location:**
+        1. **Click on any existing marker** on the map above
+        2. **Use the quick location buttons below** to instantly select common areas
+        3. **Use the control buttons** to reset or center the map
+        """)
         
         # Quick location buttons for common areas
         st.markdown("### 🎯 Quick Location Selection")
