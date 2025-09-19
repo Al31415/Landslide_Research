@@ -193,56 +193,28 @@ with col1:
         if 'map_moved' not in st.session_state:
             st.session_state.map_moved = False
         
-        # Create PyDeck map centered on current location
-        view_state = pdk.ViewState(
-            latitude=st.session_state.lat,
-            longitude=st.session_state.lon,
-            zoom=8,
-            pitch=0
-        )
+        # Create map data with current location (red dot) and historical points
+        map_data = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon],
+            'size': [200],
+            'color': [255, 0, 0, 255]  # Red for current location
+        })
         
-        # Create layers
-        layers = []
-        
-        # Crosshair/center marker (always at map center)
-        center_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=pd.DataFrame({
-                'lat': [st.session_state.lat],
-                'lon': [st.session_state.lon],
-                'color': [[255, 0, 0, 255]]  # Bright red
-            }),
-            get_position=['lon', 'lat'],
-            get_color='color',
-            get_radius=300,
-            pickable=False
-        )
-        layers.append(center_layer)
-        
-        # Historical points layer (smaller, blue)
+        # Add historical points if available (blue dots)
         if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.copy()
-            hist_data['color'] = [[0, 100, 255, 150] for _ in range(len(hist_data))]  # Blue
-            
-            hist_layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=hist_data,
-                get_position=['Longitude', 'Latitude'],
-                get_color='color',
-                get_radius=150,
-                pickable=False
-            )
-            layers.append(hist_layer)
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            hist_data['size'] = 100
+            hist_data['color'] = [0, 0, 255, 150]  # Blue for historical points
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
-        # Create the deck
-        deck = pdk.Deck(
-            map_style='mapbox://styles/mapbox/satellite-streets-v11',
-            initial_view_state=view_state,
-            layers=layers
-        )
+        # Display the map using standard Streamlit map
+        st.map(map_data, zoom=8, use_container_width=True)
         
-        # Display the map
-        st.pydeck_chart(deck, use_container_width=True)
+        # Add crosshair indicator
+        st.markdown("### 🎯 Current Target")
+        st.info(f"**Red dot shows your target location:** {st.session_state.lat:.4f}, {st.session_state.lon:.4f}")
+        st.markdown("**Instructions:** Use the controls below to move to your desired location, then click 'Use Current View Center'")
         
         # Map controls
         st.markdown("### 🎯 Map Controls")
