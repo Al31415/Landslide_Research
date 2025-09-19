@@ -223,78 +223,74 @@ with col1:
             st.success(f"📍 Location updated: {new_lat:.3f}, {new_lon:.3f}")
             st.rerun()
         
-        # Display the interactive PyDeck map
-        st.markdown("### 🗺️ Interactive Map")
-        st.info("💡 **Click anywhere on the map to select that location!**")
+        # Display the map with current coordinates
+        st.markdown("### 🗺️ Map View")
+        st.info("💡 **Use the sliders above to move around the map, or use the quick location buttons below!**")
         
-        # Create PyDeck map for click interaction
-        view_state = pdk.ViewState(
-            latitude=st.session_state.lat,
-            longitude=st.session_state.lon,
-            zoom=6,
-            pitch=0
-        )
+        # Create map data
+        map_data = pd.DataFrame({
+            'lat': [st.session_state.lat],
+            'lon': [st.session_state.lon]
+        })
         
-        # Create layers
-        layers = []
-        
-        # Current location layer (red)
-        current_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=pd.DataFrame({
-                'lat': [st.session_state.lat],
-                'lon': [st.session_state.lon],
-                'color': [[255, 0, 0, 200]]  # Red
-            }),
-            get_position=['lon', 'lat'],
-            get_color='color',
-            get_radius=200,
-            pickable=True
-        )
-        layers.append(current_layer)
-        
-        # Historical points layer (blue)
+        # Add historical points if available
         if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.copy()
-            hist_data['color'] = [[0, 0, 255, 150] for _ in range(len(hist_data))]  # Blue
-            
-            hist_layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=hist_data,
-                get_position=['Longitude', 'Latitude'],
-                get_color='color',
-                get_radius=100,
-                pickable=True
-            )
-            layers.append(hist_layer)
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
-        # Create the map
-        deck = pdk.Deck(
-            map_style='mapbox://styles/mapbox/light-v9',
-            initial_view_state=view_state,
-            layers=layers,
-            tooltip={
-                "html": "<b>Latitude:</b> {lat}<br/><b>Longitude:</b> {lon}",
-                "style": {"backgroundColor": "steelblue", "color": "white"}
-            }
-        )
+        st.map(map_data, zoom=6)
         
-        # Display the map and capture clicks
-        selected_data = st.pydeck_chart(deck, use_container_width=True)
+        # Add a coordinate grid for quick selection
+        st.markdown("### 🎯 Quick Coordinate Grid")
+        st.info("Click any button below to instantly jump to that region:")
         
-        # Handle map clicks
-        if selected_data and hasattr(selected_data, 'selected_data') and selected_data.selected_data:
-            if 'points' in selected_data.selected_data and selected_data.selected_data['points']:
-                # Get the clicked point
-                clicked_point = selected_data.selected_data['points'][0]
-                if 'position' in clicked_point:
-                    clicked_lon, clicked_lat = clicked_point['position']
-                    
-                    # Update session state with clicked coordinates
-                    st.session_state.lat = clicked_lat
-                    st.session_state.lon = clicked_lon
-                    st.success(f"📍 Location selected from map click: {clicked_lat:.3f}, {clicked_lon:.3f}")
-                    st.rerun()
+        # Create a grid of coordinate buttons
+        col_grid1, col_grid2, col_grid3 = st.columns([1, 1, 1])
+        
+        with col_grid1:
+            st.markdown("**West Coast**")
+            if st.button("🌊 San Francisco, CA", key="sf_grid"):
+                st.session_state.lat = 37.7749
+                st.session_state.lon = -122.4194
+                st.rerun()
+            if st.button("🌲 Seattle, WA", key="seattle_grid"):
+                st.session_state.lat = 47.6062
+                st.session_state.lon = -122.3321
+                st.rerun()
+            if st.button("🌵 Los Angeles, CA", key="la_grid"):
+                st.session_state.lat = 34.0522
+                st.session_state.lon = -118.2437
+                st.rerun()
+        
+        with col_grid2:
+            st.markdown("**Mountain States**")
+            if st.button("🏔️ Denver, CO", key="denver_grid"):
+                st.session_state.lat = 39.7392
+                st.session_state.lon = -104.9903
+                st.rerun()
+            if st.button("🏔️ Salt Lake City, UT", key="slc_grid"):
+                st.session_state.lat = 40.7608
+                st.session_state.lon = -111.8910
+                st.rerun()
+            if st.button("🌵 Phoenix, AZ", key="phoenix_grid"):
+                st.session_state.lat = 33.4484
+                st.session_state.lon = -112.0740
+                st.rerun()
+        
+        with col_grid3:
+            st.markdown("**East Coast**")
+            if st.button("🏛️ Washington, DC", key="dc_grid"):
+                st.session_state.lat = 38.9072
+                st.session_state.lon = -77.0369
+                st.rerun()
+            if st.button("🗽 New York, NY", key="nyc_grid"):
+                st.session_state.lat = 40.7128
+                st.session_state.lon = -74.0060
+                st.rerun()
+            if st.button("🌊 Miami, FL", key="miami_grid"):
+                st.session_state.lat = 25.7617
+                st.session_state.lon = -80.1918
+                st.rerun()
         
         # Fine-tuning controls
         st.markdown("### 🎯 Fine-Tuning Controls")
@@ -413,7 +409,7 @@ with col2:
                 feature_df = pd.DataFrame(list(features.items()), columns=['Feature', 'Value'])
                 st.dataframe(feature_df, use_container_width=True)
                 
-            except Exception as e:
+        except Exception as e:
                 st.error(f"Prediction failed: {e}")
                 st.exception(e)
     else:
