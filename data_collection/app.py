@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
+from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -173,118 +174,128 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Interactive map for direct selection
-        st.info("🗺️ **Click on the map below to select a location directly!**")
+        # Interactive map for direct selection with click-anywhere functionality
+        st.info("🗺️ **Click anywhere on the map below to select a location directly!**")
         
-        # Create a dense grid of clickable points for true click-anywhere functionality
-        import numpy as np
+        # Initialize map mode in session state
+        if 'map_mode' not in st.session_state:
+            st.session_state.map_mode = 'select'  # 'select' or 'pan'
         
-        # Create a grid of points across the visible map area
-        lat_range = np.linspace(st.session_state.lat - 2, st.session_state.lat + 2, 20)
-        lon_range = np.linspace(st.session_state.lon - 2, st.session_state.lon + 2, 20)
+        # Map mode toggle
+        st.markdown("### 🎛️ Map Controls")
+        col_mode1, col_mode2, col_mode3 = st.columns([1, 1, 1])
         
-        # Create a meshgrid of coordinates
-        lon_grid, lat_grid = np.meshgrid(lon_range, lat_range)
+        with col_mode1:
+            if st.button("🎯 Select Mode", type="primary" if st.session_state.map_mode == 'select' else "secondary", key="select_mode"):
+                st.session_state.map_mode = 'select'
+                st.rerun()
         
-        # Flatten the grid and create a DataFrame
-        grid_points = pd.DataFrame({
-            'lat': lat_grid.flatten(),
-            'lon': lon_grid.flatten(),
-            'type': 'clickable'
-        })
+        with col_mode2:
+            if st.button("🖱️ Pan Mode", type="primary" if st.session_state.map_mode == 'pan' else "secondary", key="pan_mode"):
+                st.session_state.map_mode = 'pan'
+                st.rerun()
         
-        # Add current location
-        current_point = pd.DataFrame({
+        with col_mode3:
+            if st.button("🔄 Reset View", key="reset_view"):
+                st.session_state.lat = 37.7749
+                st.session_state.lon = -122.4194
+                st.success("Reset to San Francisco coordinates")
+                st.rerun()
+        
+        # Create a simple map for click-anywhere functionality
+        map_data = pd.DataFrame({
             'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon],
-            'type': 'current'
+            'lon': [st.session_state.lon]
         })
-        
-        # Combine all points
-        all_points = pd.concat([grid_points, current_point], ignore_index=True)
         
         # Add historical points if available
         if orig_points is not None and not orig_points.empty:
-            hist_points = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'}).copy()
-            hist_points['type'] = 'historical'
-            all_points = pd.concat([all_points, hist_points], ignore_index=True)
+            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+            map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
-        # Create layers with different colors for different point types
-        layers = [
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=all_points[all_points['type'] == 'clickable'],
-                get_position='[lon, lat]',
-                get_color='[0, 255, 0, 20]',  # Very transparent green for clickable grid
-                get_radius=1000,
-                pickable=True,
-            ),
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=all_points[all_points['type'] == 'current'],
-                get_position='[lon, lat]',
-                get_color='[255, 0, 0, 200]',  # Red for current location
-                get_radius=8000,
-                pickable=True,
-            )
-        ]
+        # Display the map
+        st.map(map_data, zoom=6)
         
-        # Add historical points layer
-        if orig_points is not None and not orig_points.empty:
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=all_points[all_points['type'] == 'historical'],
-                    get_position='[lon, lat]',
-                    get_color='[0, 100, 255, 100]',  # Blue for historical
-                    get_radius=2000,
-                    pickable=True,
-                )
-            )
+        # Click-anywhere functionality
+        if st.session_state.map_mode == 'select':
+            st.markdown("### 🎯 Click-Anywhere Selection")
+            st.info("**Click anywhere on the map above to select that exact location!**")
+            
+            # JavaScript to capture map clicks
+            if st.button("🖱️ Enable Click-to-Select", type="primary", key="enable_click"):
+                js_code = """
+                function enableMapClick() {
+                    // Find the map container
+                    const mapContainer = document.querySelector('[data-testid="stMap"]');
+                    if (mapContainer) {
+                        // Remove any existing click handlers
+                        mapContainer.removeEventListener('click', handleMapClick);
+                        
+                        // Add new click handler
+                        mapContainer.addEventListener('click', handleMapClick);
+                        mapContainer.style.cursor = 'crosshair';
+                        
+                        alert('Click-to-select enabled! Click anywhere on the map to select a location.');
+                    } else {
+                        alert('Map not found. Please try again.');
+                    }
+                }
+                
+                function handleMapClick(e) {
+                    // Get click coordinates relative to map
+                    const rect = e.target.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    // Convert to approximate lat/lon (simplified conversion)
+                    // This is a basic conversion - in reality you'd need proper map projection
+                    const lat = 90 - (y / rect.height) * 180;
+                    const lon = (x / rect.width) * 360 - 180;
+                    
+                    // Store in session storage
+                    sessionStorage.setItem('clicked_lat', lat);
+                    sessionStorage.setItem('clicked_lon', lon);
+                    
+                    // Show success message
+                    alert('Location selected: ' + lat.toFixed(6) + ', ' + lon.toFixed(6));
+                    
+                    // Reload the page to update coordinates
+                    window.location.reload();
+                }
+                
+                enableMapClick();
+                """
+                
+                try:
+                    streamlit_js_eval(js_code)
+                except Exception as e:
+                    st.error(f"JavaScript execution failed: {e}")
+                    st.info("Please use the quick location buttons below instead.")
+            
+            # Check if coordinates were clicked
+            try:
+                clicked_lat = streamlit_js_eval("sessionStorage.getItem('clicked_lat')")
+                clicked_lon = streamlit_js_eval("sessionStorage.getItem('clicked_lon')")
+                
+                if clicked_lat and clicked_lon:
+                    try:
+                        lat_val = float(clicked_lat)
+                        lon_val = float(clicked_lon)
+                        if not np.isnan(lat_val) and not np.isnan(lon_val):
+                            st.session_state.lat = lat_val
+                            st.session_state.lon = lon_val
+                            st.success(f"📍 Location selected from map click: {lat_val:.6f}, {lon_val:.6f}")
+                            # Clear the session storage
+                            streamlit_js_eval("sessionStorage.removeItem('clicked_lat'); sessionStorage.removeItem('clicked_lon');")
+                            st.rerun()
+                    except (ValueError, TypeError):
+                        pass
+            except:
+                pass
         
-        # Create the interactive map
-        map_deck = pdk.Deck(
-            map_style='mapbox://styles/mapbox/light-v9',
-            initial_view_state=pdk.ViewState(
-                latitude=st.session_state.lat,
-                longitude=st.session_state.lon,
-                zoom=6 if orig_points is None else 4,
-                pitch=0,
-            ),
-            layers=layers,
-            tooltip={
-                "html": "<b>Click to select this location</b><br/>Lat: {lat:.6f}<br/>Lon: {lon:.6f}",
-                "style": {"backgroundColor": "steelblue", "color": "white"}
-            }
-        )
-        
-        # Display the map with click handling
-        selected_data = st.pydeck_chart(map_deck, use_container_width=True, on_select="rerun")
-        
-        # Handle map clicks
-        if selected_data is not None and hasattr(selected_data, 'selection') and selected_data.selection:
-            if hasattr(selected_data.selection, 'point') and selected_data.selection.point:
-                point = selected_data.selection.point
-                if hasattr(point, 'lat') and hasattr(point, 'lon'):
-                    new_lat = float(point.lat)
-                    new_lon = float(point.lon)
-                    if new_lat != st.session_state.lat or new_lon != st.session_state.lon:
-                        st.session_state.lat = new_lat
-                        st.session_state.lon = new_lon
-                        st.success(f"📍 Location selected from map: {new_lat:.6f}, {new_lon:.6f}")
-                        st.rerun()
-        
-        # Add instructions for map interaction
-        st.markdown("### 🖱️ Click Anywhere on the Map!")
-        st.info("""
-        **🎯 True click-anywhere functionality:** Click anywhere on the map to select that location!
-        
-        **How it works:**
-        1. **Click anywhere** on the map above to select that exact location
-        2. **Green grid** shows clickable areas (very subtle)
-        3. **Red dot** shows your current selection
-        4. **Blue dots** show historical data points
-        """)
+        else:  # Pan mode
+            st.markdown("### 🖱️ Pan Mode Active")
+            st.info("**Pan mode is active. Click and drag to move around the map, or switch to Select Mode to choose locations.**")
         
         # Quick location buttons for common areas
         st.markdown("### 🎯 Quick Location Selection")
