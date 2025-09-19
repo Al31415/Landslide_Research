@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
-import folium
-from streamlit_folium import st_folium
+import plotly.graph_objects as go
+import plotly.express as px
+from streamlit_plotly_events import plotly_events
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -188,53 +189,76 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Interactive map for direct click-to-select functionality
+        # Interactive map for direct click-to-select functionality using Plotly
         st.info("🗺️ **Click anywhere on the map below to select that exact location!**")
         
         try:
-            # Create folium map for click functionality - NO FUNCTIONS!
-            m = folium.Map(
-                location=[st.session_state.lat, st.session_state.lon],
-                zoom_start=6,
-                tiles='OpenStreetMap'
+            # Create Plotly scatter mapbox for click functionality
+            fig = go.Figure()
+            
+            # Add current location marker
+            fig.add_trace(go.Scattermapbox(
+                lat=[st.session_state.lat],
+                lon=[st.session_state.lon],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color='red',
+                    symbol='star'
+                ),
+                text=[f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}"],
+                hovertemplate="%{text}<extra></extra>",
+                name="Current Location"
+            ))
+            
+            # Add historical points if available
+            if orig_points is not None and not orig_points.empty:
+                fig.add_trace(go.Scattermapbox(
+                    lat=orig_points['Latitude'].tolist(),
+                    lon=orig_points['Longitude'].tolist(),
+                    mode='markers',
+                    marker=dict(
+                        size=8,
+                        color='blue',
+                        symbol='circle'
+                    ),
+                    text=[f"Historical Point {i+1}<br>Lat: {row['Latitude']:.6f}<br>Lon: {row['Longitude']:.6f}" 
+                          for i, row in orig_points.iterrows()],
+                    hovertemplate="%{text}<extra></extra>",
+                    name="Historical Points"
+                ))
+            
+            # Update layout for mapbox
+            fig.update_layout(
+                mapbox=dict(
+                    style="open-street-map",
+                    center=dict(lat=st.session_state.lat, lon=st.session_state.lon),
+                    zoom=6
+                ),
+                margin=dict(r=0, t=0, l=0, b=0),
+                height=400,
+                showlegend=True
             )
             
-            # Add current location marker - simple, no functions
-            folium.Marker(
-                [st.session_state.lat, st.session_state.lon],
-                popup=f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}",
-                tooltip="Current Location"
-            ).add_to(m)
-            
-            # Add historical points if available - simple, no functions
-            if orig_points is not None and not orig_points.empty:
-                for idx, row in orig_points.iterrows():
-                    folium.CircleMarker(
-                        [row['Latitude'], row['Longitude']],
-                        radius=5,
-                        popup=f"Historical Point {idx+1}<br>Lat: {row['Latitude']:.6f}<br>Lon: {row['Longitude']:.6f}",
-                        tooltip=f"Historical Point {idx+1}",
-                        color='blue',
-                        fill=True,
-                        fillColor='blue'
-                    ).add_to(m)
-            
-            # Display the interactive map
-            map_data = st_folium(m, height=400, width=700, returned_objects=["last_clicked"])
+            # Display the interactive map and capture clicks
+            selected_points = plotly_events(fig, click_event=True, hover_event=False, select_event=False, override_height=400)
             
             # Handle map clicks
-            if map_data and map_data.get("last_clicked") is not None:
-                clicked_lat = map_data["last_clicked"]["lat"]
-                clicked_lon = map_data["last_clicked"]["lng"]
-                
-                # Update session state with clicked coordinates
-                st.session_state.lat = clicked_lat
-                st.session_state.lon = clicked_lon
-                st.success(f"📍 Location selected from map click: {clicked_lat:.6f}, {clicked_lon:.6f}")
-                st.rerun()
+            if selected_points:
+                # Get the last clicked point
+                last_click = selected_points[-1]
+                if 'lat' in last_click and 'lon' in last_click:
+                    clicked_lat = last_click['lat']
+                    clicked_lon = last_click['lon']
+                    
+                    # Update session state with clicked coordinates
+                    st.session_state.lat = clicked_lat
+                    st.session_state.lon = clicked_lon
+                    st.success(f"📍 Location selected from map click: {clicked_lat:.6f}, {clicked_lon:.6f}")
+                    st.rerun()
                 
         except Exception as e:
-            st.error(f"Folium map failed to load: {e}")
+            st.error(f"Plotly map failed to load: {e}")
             st.info("Falling back to basic map visualization...")
             
             # Fallback to regular st.map()
