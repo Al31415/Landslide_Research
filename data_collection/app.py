@@ -223,48 +223,8 @@ with col1:
             
             # JavaScript to capture map clicks
             if st.button("🖱️ Enable Click-to-Select", type="primary", key="enable_click"):
-                js_code = """
-                function enableMapClick() {
-                    // Find the map container
-                    const mapContainer = document.querySelector('[data-testid="stMap"]');
-                    if (mapContainer) {
-                        // Remove any existing click handlers
-                        mapContainer.removeEventListener('click', handleMapClick);
-                        
-                        // Add new click handler
-                        mapContainer.addEventListener('click', handleMapClick);
-                        mapContainer.style.cursor = 'crosshair';
-                        
-                        alert('Click-to-select enabled! Click anywhere on the map to select a location.');
-                    } else {
-                        alert('Map not found. Please try again.');
-                    }
-                }
-                
-                function handleMapClick(e) {
-                    // Get click coordinates relative to map
-                    const rect = e.target.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    
-                    // Convert to approximate lat/lon (simplified conversion)
-                    // This is a basic conversion - in reality you'd need proper map projection
-                    const lat = 90 - (y / rect.height) * 180;
-                    const lon = (x / rect.width) * 360 - 180;
-                    
-                    // Store in session storage
-                    sessionStorage.setItem('clicked_lat', lat);
-                    sessionStorage.setItem('clicked_lon', lon);
-                    
-                    // Show success message
-                    alert('Location selected: ' + lat.toFixed(6) + ', ' + lon.toFixed(6));
-                    
-                    // Reload the page to update coordinates
-                    window.location.reload();
-                }
-                
-                enableMapClick();
-                """
+                # Use a simpler single-line JavaScript approach
+                js_code = "const mapContainer = document.querySelector('[data-testid=\"stMap\"]'); if (mapContainer) { mapContainer.style.cursor = 'crosshair'; mapContainer.addEventListener('click', function(e) { const rect = e.target.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top; const lat = 90 - (y / rect.height) * 180; const lon = (x / rect.width) * 360 - 180; sessionStorage.setItem('clicked_lat', lat); sessionStorage.setItem('clicked_lon', lon); alert('Location selected: ' + lat.toFixed(6) + ', ' + lon.toFixed(6)); window.location.reload(); }); alert('Click-to-select enabled! Click anywhere on the map.'); } else { alert('Map not found.'); }"
                 
                 try:
                     streamlit_js_eval(js_code)
