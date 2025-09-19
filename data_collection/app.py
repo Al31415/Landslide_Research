@@ -267,7 +267,7 @@ with col1:
             )
         
         # Update coordinates button
-        if st.button("📍 Set Location", type="primary"):
+        if st.button("📍 Set Location", type="primary", key="set_location_manual"):
             st.session_state.lat = map_lat
             st.session_state.lon = map_lon
             st.success(f"✅ Location set to: {map_lat:.6f}, {map_lon:.6f}")
@@ -312,7 +312,7 @@ with col1:
             )
         
         # Update coordinates button
-        if st.button("📍 Set Location", type="primary"):
+        if st.button("📍 Set Location", type="primary", key="set_location_selected"):
             st.session_state.lat = selected_lat
             st.session_state.lon = selected_lon
             st.success(f"✅ Location set to: {selected_lat:.6f}, {selected_lon:.6f}")
