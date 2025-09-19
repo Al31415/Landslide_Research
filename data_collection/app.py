@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import os
 import requests
 import json
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -186,37 +187,34 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # Intuitive map-based location selection
-        st.info("🗺️ **Pan and zoom the map below to find your location. The crosshair shows what will be analyzed.**")
-        
-        # Initialize map tracking state
-        if 'map_moved' not in st.session_state:
-            st.session_state.map_moved = False
-        
+        # True click-to-select using a lightweight custom Leaflet component
+        st.info("🗺️ **Click anywhere on the map to select that exact location.**")
+
+        # Load local component
+        click_map = components.declare_component(
+            "click_map",
+            path=os.path.join(os.path.dirname(__file__), "click_map_component")
+        )
+
+        # Render component and get result
+        result = click_map(initial_lat=float(st.session_state.lat), initial_lon=float(st.session_state.lon), initial_zoom=6)
+
+        # If a click occurred, update session state
+        if result and isinstance(result, dict) and "lat" in result and "lon" in result:
+            try:
+                st.session_state.lat = float(result["lat"])
+                st.session_state.lon = float(result["lon"])
+                st.success(f"📍 Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
+            except Exception:
+                pass
+
         # Show current target coordinates prominently
         st.markdown("### 🎯 Current Target Location")
         col_target1, col_target2 = st.columns([1, 1])
         with col_target1:
-            st.metric("📍 Latitude", f"{st.session_state.lat:.6f}", help="This is what will be analyzed")
+            st.metric("📍 Latitude", f"{st.session_state.lat:.6f}")
         with col_target2:
-            st.metric("📍 Longitude", f"{st.session_state.lon:.6f}", help="This is what will be analyzed")
-        
-        # Create map data with current target location highlighted
-        map_data = pd.DataFrame({
-            'lat': [st.session_state.lat],
-            'lon': [st.session_state.lon]
-        })
-        
-        # Add historical points if available
-        if orig_points is not None and not orig_points.empty:
-            hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
-            map_data = pd.concat([map_data, hist_data], ignore_index=True)
-        
-        # Display the map centered on target location
-        st.map(map_data, zoom=8, use_container_width=True)
-        
-        # Add clear instructions
-        st.info("🗺️ **The red dot shows your current target location. Use the controls below to move it to your desired location!**")
+            st.metric("📍 Longitude", f"{st.session_state.lon:.6f}")
         
         # Map controls
         st.markdown("### 🎯 Map Controls")
@@ -405,7 +403,7 @@ with col2:
                 st.subheader("📊 Computed Features")
                 feature_df = pd.DataFrame(list(features.items()), columns=['Feature', 'Value'])
                 st.dataframe(feature_df, use_container_width=True)
-                
+
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
                 st.exception(e)
