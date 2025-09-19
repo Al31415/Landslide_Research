@@ -140,7 +140,7 @@ with col1:
 
     if input_method != "📍 Click on Map":
         # Use pydeck for non-click modes (nice visualization, performance)
-    layers = [
+        layers = [
         pdk.Layer(
             "ScatterplotLayer",
                 data=pd.DataFrame({"lat": [st.session_state.lat], "lon": [st.session_state.lon]}),
