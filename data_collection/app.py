@@ -191,22 +191,22 @@ with col1:
         # Interactive map for direct click-to-select functionality
         st.info("🗺️ **Click anywhere on the map below to select that exact location!**")
         
-        # Create folium map for click functionality
+        # Create folium map for click functionality - NO FUNCTIONS!
         m = folium.Map(
             location=[st.session_state.lat, st.session_state.lon],
             zoom_start=6,
-            tiles='OpenStreetMap'
+            tiles='OpenStreetMap',
+            control_scale=True
         )
         
-        # Add current location marker
+        # Add current location marker - simple, no functions
         folium.Marker(
             [st.session_state.lat, st.session_state.lon],
             popup=f"Current Location<br>Lat: {st.session_state.lat:.6f}<br>Lon: {st.session_state.lon:.6f}",
-            tooltip="Current Location",
-            icon=folium.Icon(color='red', icon='star')
+            tooltip="Current Location"
         ).add_to(m)
         
-        # Add historical points if available
+        # Add historical points if available - simple, no functions
         if orig_points is not None and not orig_points.empty:
             for idx, row in orig_points.iterrows():
                 folium.CircleMarker(
@@ -329,3 +329,5 @@ with col2:
                 st.exception(e)
     else:
         st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
+
+            st.error(f"Validation failed: {e}") 
