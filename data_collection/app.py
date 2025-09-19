@@ -198,21 +198,21 @@ with col1:
         col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
         
         with col_quick1:
-            if st.button("🏔️ Mount Rainier, WA"):
+            if st.button("🏔️ Mount Rainier, WA", key="rainier_main"):
                 st.session_state.lat = 46.8523
                 st.session_state.lon = -121.7603
                 st.success("📍 Set to Mount Rainier, WA")
                 st.rerun()
         
         with col_quick2:
-            if st.button("🌋 Mount St. Helens, WA"):
+            if st.button("🌋 Mount St. Helens, WA", key="helens_main"):
                 st.session_state.lat = 46.1914
                 st.session_state.lon = -122.1956
                 st.success("📍 Set to Mount St. Helens, WA")
                 st.rerun()
         
         with col_quick3:
-            if st.button("🏔️ Yosemite, CA"):
+            if st.button("🏔️ Yosemite, CA", key="yosemite_main"):
                 st.session_state.lat = 37.8651
                 st.session_state.lon = -119.5383
                 st.success("📍 Set to Yosemite, CA")
@@ -222,21 +222,21 @@ with col1:
         col_quick4, col_quick5, col_quick6 = st.columns([1, 1, 1])
         
         with col_quick4:
-            if st.button("🌲 Olympic NP, WA"):
+            if st.button("🌲 Olympic NP, WA", key="olympic_main"):
                 st.session_state.lat = 47.8021
                 st.session_state.lon = -123.6044
                 st.success("📍 Set to Olympic National Park, WA")
                 st.rerun()
         
         with col_quick5:
-            if st.button("🏔️ Glacier NP, MT"):
+            if st.button("🏔️ Glacier NP, MT", key="glacier_main"):
                 st.session_state.lat = 48.7596
                 st.session_state.lon = -113.7870
                 st.success("📍 Set to Glacier National Park, MT")
                 st.rerun()
         
         with col_quick6:
-            if st.button("🌋 Lassen NP, CA"):
+            if st.button("🌋 Lassen NP, CA", key="lassen_main"):
                 st.session_state.lat = 40.4983
                 st.session_state.lon = -121.4209
                 st.success("📍 Set to Lassen National Park, CA")
@@ -332,21 +332,21 @@ with col1:
         col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
         
         with col_quick1:
-            if st.button("🏔️ Mount Rainier, WA"):
+            if st.button("🏔️ Mount Rainier, WA", key="rainier_click"):
                 st.session_state.lat = 46.8523
                 st.session_state.lon = -121.7603
                 st.success("📍 Set to Mount Rainier, WA")
                 st.rerun()
         
         with col_quick2:
-            if st.button("🌋 Mount St. Helens, WA"):
+            if st.button("🌋 Mount St. Helens, WA", key="helens_click"):
                 st.session_state.lat = 46.1914
                 st.session_state.lon = -122.1956
                 st.success("📍 Set to Mount St. Helens, WA")
                 st.rerun()
         
         with col_quick3:
-            if st.button("🏔️ Yosemite, CA"):
+            if st.button("🏔️ Yosemite, CA", key="yosemite_click"):
                 st.session_state.lat = 37.8651
                 st.session_state.lon = -119.5383
                 st.success("📍 Set to Yosemite, CA")
@@ -356,21 +356,21 @@ with col1:
         col_quick4, col_quick5, col_quick6 = st.columns([1, 1, 1])
         
         with col_quick4:
-            if st.button("🌲 Olympic NP, WA"):
+            if st.button("🌲 Olympic NP, WA", key="olympic_click"):
                 st.session_state.lat = 47.8021
                 st.session_state.lon = -123.6044
                 st.success("📍 Set to Olympic National Park, WA")
                 st.rerun()
         
         with col_quick5:
-            if st.button("🏔️ Glacier NP, MT"):
+            if st.button("🏔️ Glacier NP, MT", key="glacier_click"):
                 st.session_state.lat = 48.7596
                 st.session_state.lon = -113.7870
                 st.success("📍 Set to Glacier National Park, MT")
                 st.rerun()
         
         with col_quick6:
-            if st.button("🌋 Lassen NP, CA"):
+            if st.button("🌋 Lassen NP, CA", key="lassen_click"):
                 st.session_state.lat = 40.4983
                 st.session_state.lon = -121.4209
                 st.success("📍 Set to Lassen National Park, CA")
