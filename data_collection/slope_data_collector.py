@@ -206,7 +206,7 @@ class SlopeDataCollector:
         py = int((maxy - lat) / -yres)
         return px, py
 
-    def get_terrain_features_for_point(self, lat: float, lon: float, 
+    def get_terrain_features_for_point(self, lat: float, lon: float,
                                      output_dir: str = "temp_dem") -> Dict[str, float]:
         """
         Get terrain features for a single point.
@@ -221,43 +221,64 @@ class SlopeDataCollector:
         """
         # Create output directory
         Path(output_dir).mkdir(exist_ok=True)
-        
-        # Download DEM data
-        region = self._offset(lat, lon)
-        dem_file = Path(output_dir) / f"dem_{lat:.5f}_{lon:.5f}.tif"
-        
-        if not self._download_elevation_data(region, str(dem_file)):
-            raise RuntimeError(f"Failed to download DEM for point ({lat}, {lon})")
-        
-        try:
-            # Load DEM and compute attributes
-            attrs = self._load_dem_and_attributes(str(dem_file))
-            
-            # Get pixel coordinates
-            ds = gdal.Open(str(dem_file))
-            gt = ds.GetGeoTransform()
-            h, w = ds.ReadAsArray().shape
-            px, py = self._latlon_to_pixel(gt, lat, lon)
-            
-            # Check bounds
-            if not (0 <= px < w and 0 <= py < h):
-                raise ValueError(f"Point ({lat}, {lon}) outside DEM bounds")
-            
-            # Extract values at point
-            features = {k: float(v[py, px]) for k, v in attrs.items()}
-            
-            # Clean up
-            ds = None
-            if dem_file.exists():
-                dem_file.unlink()
-            
-            return features
-            
-        except Exception as e:
-            # Clean up on error
-            if dem_file.exists():
-                dem_file.unlink()
-            raise e
+
+        # Try progressively larger regions to ensure the point is within bounds
+        region_sizes_m = [10_000, 50_000, 100_000]
+
+        last_error: Optional[Exception] = None
+        for metres in region_sizes_m:
+            dem_file = Path(output_dir) / f"dem_{lat:.5f}_{lon:.5f}_{metres}.tif"
+            try:
+                region = self._offset(lat, lon, metres=metres)
+                if not self._download_elevation_data(region, str(dem_file)):
+                    last_error = RuntimeError(f"Failed to download DEM for point ({lat}, {lon}) at {metres} m window")
+                    continue
+
+                # Load DEM and compute attributes
+                attrs = self._load_dem_and_attributes(str(dem_file))
+
+                # Get pixel coordinates
+                ds = gdal.Open(str(dem_file))
+                gt = ds.GetGeoTransform()
+                h, w = ds.ReadAsArray().shape
+                px, py = self._latlon_to_pixel(gt, lat, lon)
+
+                # If slightly out-of-bounds due to rounding, clamp to bounds
+                clamped_px = min(max(px, 0), w - 1)
+                clamped_py = min(max(py, 0), h - 1)
+
+                if not (0 <= px < w and 0 <= py < h):
+                    # Retry with next larger region if available
+                    last_error = ValueError(f"Point ({lat}, {lon}) outside DEM bounds for window {metres} m; px={px}, py={py}, w={w}, h={h}")
+                    ds = None
+                    if dem_file.exists():
+                        dem_file.unlink()
+                    continue
+
+                # Extract values at clamped pixel (safe)
+                features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
+
+                # Clean up
+                ds = None
+                if dem_file.exists():
+                    dem_file.unlink()
+
+                return features
+
+            except Exception as e:
+                last_error = e
+                if dem_file.exists():
+                    dem_file.unlink()
+                continue
+
+        # As a final fallback, return neutral/default terrain values instead of failing
+        warnings.warn(f"DEM lookup failed for ({lat}, {lon}); using fallback terrain values. Last error: {last_error}")
+        return {
+            "slope_degrees": float('nan'),
+            "aspect": float('nan'),
+            "planform_curvature": float('nan'),
+            "profile_curvature": float('nan'),
+        }
 
     def collect_terrain_data_batch(self, coordinates: List[Tuple[float, float]], 
                                  output_dir: str = "temp_dem") -> pd.DataFrame:
