@@ -222,14 +222,14 @@ with col2:
                 feature_service = FeatureService()
                 
                 # Get features for the selected location and date
-                features = feature_service.get_features_for_point(
-                    st.session_state.lat, 
-                    st.session_state.lon, 
-                    date
+                features = feature_service.compute_features(
+                    float(st.session_state.lat),
+                    float(st.session_state.lon),
+                    datetime.combine(date, datetime.min.time()) if hasattr(date, 'year') else date
                 )
                 
                 # Make prediction
-                prediction = feature_service.predict_stability(features)
+                prediction = feature_service.predict(features)
                 
                 # Display results
                 st.success("✅ Prediction completed!")
