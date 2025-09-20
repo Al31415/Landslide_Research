@@ -12,6 +12,20 @@ import folium
 from streamlit_folium import st_folium
 import shap
 
+def _categorize_feature(feature_name: str) -> str:
+    """Categorize features for better organization."""
+    feature_lower = feature_name.lower()
+    if 'slope' in feature_lower:
+        return "🏔️ Terrain & Slope"
+    elif any(term in feature_lower for term in ['prcp', 'precipitation']):
+        return "🌧️ Precipitation"
+    elif any(term in feature_lower for term in ['bulk', 'density', 'horizon', 'soil']):
+        return "🌱 Soil Properties"
+    elif 'flux' in feature_lower:
+        return "🌊 Climate Model (CMIP6)"
+    else:
+        return "📊 Other Features"
+
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
 st.title("US Stability Predictor (CMIP + Meteostat + SSURGO + USGS)")
@@ -183,7 +197,7 @@ with col1:
         })
         
         # Add historical points if available
-        if orig_points is not None and not orig_points.empty:
+    if orig_points is not None and not orig_points.empty:
             hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
             map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
@@ -355,7 +369,7 @@ with col2:
                         # Create SHAP waterfall plot
                         fig, ax = plt.subplots(figsize=(10, 8))
                         shap.waterfall_plot(shap_values[0], show=False)
-                        st.pyplot(fig)
+                    st.pyplot(fig)
                         plt.close()
                 
                 except Exception as shap_error:
@@ -382,17 +396,4 @@ with col2:
     else:
         st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
 
-# Helper function for categorizing features
-def _categorize_feature(feature_name: str) -> str:
-    """Categorize features for better organization."""
-    feature_lower = feature_name.lower()
-    if 'slope' in feature_lower:
-        return "🏔️ Terrain & Slope"
-    elif any(term in feature_lower for term in ['prcp', 'precipitation']):
-        return "🌧️ Precipitation"
-    elif any(term in feature_lower for term in ['bulk', 'density', 'horizon', 'soil']):
-        return "🌱 Soil Properties"
-    elif 'flux' in feature_lower:
-        return "🌊 Climate Model (CMIP6)"
-    else:
-        return "📊 Other Features"
+ 
