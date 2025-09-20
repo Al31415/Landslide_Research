@@ -8,6 +8,8 @@ import os
 import requests
 import json
 import streamlit.components.v1 as components
+import folium
+from streamlit_folium import st_folium
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -187,184 +189,25 @@ with col1:
         st.map(map_data, zoom=6)
 
     elif input_method == "📍 Click on Map":
-        # True click-to-select using a lightweight custom Leaflet component
-        st.info("🗺️ **Click anywhere on the map to select that exact location.**")
+        # Use Folium + streamlit-folium for true click-to-select
+        st.info("🗺️ Click anywhere on the map to select a location.")
 
-        # Load local component
-        click_map = components.declare_component(
-            "click_map",
-            path=os.path.join(os.path.dirname(__file__), "click_map_component")
-        )
+        # Create a Folium map centered on current coords
+        fmap = folium.Map(location=[float(st.session_state.lat), float(st.session_state.lon)], zoom_start=6, control_scale=True)
+        folium.Marker(location=[float(st.session_state.lat), float(st.session_state.lon)]).add_to(fmap)
 
-        # Render component and get result
-        result = click_map(initial_lat=float(st.session_state.lat), initial_lon=float(st.session_state.lon), initial_zoom=6)
+        # Render and capture interactions
+        map_state = st_folium(fmap, height=420, key="folium_click_map")
 
-        # If a click occurred, update session state
-        if result and isinstance(result, dict) and "lat" in result and "lon" in result:
-            try:
-                st.session_state.lat = float(result["lat"])
-                st.session_state.lon = float(result["lon"])
+        # Update on click
+        if map_state and isinstance(map_state, dict) and map_state.get("last_clicked"):
+            lat = map_state["last_clicked"].get("lat")
+            lon = map_state["last_clicked"].get("lng")
+            if lat is not None and lon is not None:
+                st.session_state.lat = float(lat)
+                st.session_state.lon = float(lon)
                 st.success(f"📍 Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
-            except Exception:
-                pass
-
-        # Show current target coordinates prominently
-        st.markdown("### 🎯 Current Target Location")
-        col_target1, col_target2 = st.columns([1, 1])
-        with col_target1:
-            st.metric("📍 Latitude", f"{st.session_state.lat:.6f}")
-        with col_target2:
-            st.metric("📍 Longitude", f"{st.session_state.lon:.6f}")
-        
-        # Map controls
-        st.markdown("### 🎯 Map Controls")
-        col_control1, col_control2, col_control3 = st.columns([1, 1, 1])
-        
-        with col_control1:
-            if st.button("📍 Use Current View Center", type="primary", key="use_center"):
-                # For now, we'll use the current coordinates as the center
-                # In a future enhancement, we could detect the actual map center
-                st.success(f"✅ Using current coordinates: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}")
-                st.info("💡 **Tip:** Use the Quick Jump or Fine Adjustment buttons to move to your exact desired location!")
-                st.balloons()
-        
-        with col_control2:
-            if st.button("🔄 Reset to Default", key="reset_map"):
-                st.session_state.lat = 37.7749
-                st.session_state.lon = -122.4194
-                st.success("Reset to San Francisco")
                 st.rerun()
-        
-        with col_control3:
-            if st.button("🎯 Center on Selection", key="center_map"):
-                # This will re-center the map on the current coordinates
-                st.rerun()
-        
-        # Show current coordinates
-        st.markdown("### 📍 Current Selection")
-        col_coord1, col_coord2 = st.columns([1, 1])
-        with col_coord1:
-            st.metric("Latitude", f"{st.session_state.lat:.6f}")
-        with col_coord2:
-            st.metric("Longitude", f"{st.session_state.lon:.6f}")
-        
-        # Quick jump locations
-        st.markdown("### 🚀 Quick Jump Locations")
-        col_jump1, col_jump2, col_jump3, col_jump4 = st.columns([1, 1, 1, 1])
-        
-        with col_jump1:
-            if st.button("🏔️ Mt. Rainier", key="rainier_jump"):
-                st.session_state.lat = 46.8523
-                st.session_state.lon = -121.7603
-                st.success("Jumped to Mount Rainier")
-                st.rerun()
-        
-        with col_jump2:
-            if st.button("🌋 Mt. St. Helens", key="helens_jump"):
-                st.session_state.lat = 46.1914
-                st.session_state.lon = -122.1956
-                st.success("Jumped to Mount St. Helens")
-                st.rerun()
-        
-        with col_jump3:
-            if st.button("🏔️ Yosemite", key="yosemite_jump"):
-                st.session_state.lat = 37.8651
-                st.session_state.lon = -119.5383
-                st.success("Jumped to Yosemite")
-                st.rerun()
-        
-        with col_jump4:
-            if st.button("🌲 Olympic NP", key="olympic_jump"):
-                st.session_state.lat = 47.8021
-                st.session_state.lon = -123.6044
-                st.success("Jumped to Olympic National Park")
-                st.rerun()
-        
-        # Instructions
-        st.markdown("### 💡 How to Use")
-        st.info("""
-        1. **Pan and zoom** the map to find your desired location
-        2. The **red crosshair** shows exactly what will be analyzed
-        3. Click **"Use Current View Center"** when you're happy with the location
-        4. Or use **Quick Jump** buttons to go to common landslide areas
-        """)
-        
-        # Fine adjustments
-        st.markdown("### 🎯 Fine Adjustments")
-        col_adj1, col_adj2, col_adj3, col_adj4 = st.columns([1, 1, 1, 1])
-        
-        with col_adj1:
-            if st.button("⬆️ +0.01°", key="north_adj"):
-                st.session_state.lat = min(49.0, st.session_state.lat + 0.01)
-                st.rerun()
-        
-        with col_adj2:
-            if st.button("⬇️ -0.01°", key="south_adj"):
-                st.session_state.lat = max(24.0, st.session_state.lat - 0.01)
-                st.rerun()
-        
-        with col_adj3:
-            if st.button("⬅️ -0.01°", key="west_adj"):
-                st.session_state.lon = max(-125.0, st.session_state.lon - 0.01)
-                st.rerun()
-        
-        with col_adj4:
-            if st.button("➡️ +0.01°", key="east_adj"):
-                st.session_state.lon = min(-66.0, st.session_state.lon + 0.01)
-                st.rerun()
-        
-        # Quick location buttons for common areas
-        st.markdown("### 🎯 Quick Location Selection")
-        st.markdown("**Or click any button below to instantly set coordinates:**")
-        
-        col_quick1, col_quick2, col_quick3 = st.columns([1, 1, 1])
-        
-        with col_quick1:
-            if st.button("🏔️ Mount Rainier, WA", key="rainier_click"):
-                st.session_state.lat = 46.8523
-                st.session_state.lon = -121.7603
-                st.success("📍 Set to Mount Rainier, WA")
-                st.rerun()
-        
-        with col_quick2:
-            if st.button("🌋 Mount St. Helens, WA", key="helens_click"):
-                st.session_state.lat = 46.1914
-                st.session_state.lon = -122.1956
-                st.success("📍 Set to Mount St. Helens, WA")
-                st.rerun()
-        
-        with col_quick3:
-            if st.button("🏔️ Yosemite, CA", key="yosemite_click"):
-                st.session_state.lat = 37.8651
-                st.session_state.lon = -119.5383
-                st.success("📍 Set to Yosemite, CA")
-                st.rerun()
-        
-        # Additional quick locations
-        col_quick4, col_quick5, col_quick6 = st.columns([1, 1, 1])
-        
-        with col_quick4:
-            if st.button("🌲 Olympic NP, WA", key="olympic_click"):
-                st.session_state.lat = 47.8021
-                st.session_state.lon = -123.6044
-                st.success("📍 Set to Olympic National Park, WA")
-                st.rerun()
-        
-        with col_quick5:
-            if st.button("🏔️ Glacier NP, MT", key="glacier_click"):
-                st.session_state.lat = 48.7596
-                st.session_state.lon = -113.7870
-                st.success("📍 Set to Glacier National Park, MT")
-                st.rerun()
-        
-        with col_quick6:
-            if st.button("🌋 Lassen NP, CA", key="lassen_click"):
-                st.session_state.lat = 40.4983
-                st.session_state.lon = -121.4209
-                st.success("📍 Set to Lassen National Park, CA")
-                st.rerun()
-        
-        st.markdown("💡 **Tip:** Click anywhere on the map above to select that exact location!")
 
 with col2:
     st.subheader("Prediction and Features")
