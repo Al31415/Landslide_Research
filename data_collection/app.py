@@ -10,6 +10,7 @@ import json
 import streamlit.components.v1 as components
 import folium
 from streamlit_folium import st_folium
+import shap
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
@@ -71,11 +72,11 @@ col1, col2 = st.columns([1, 1])
 with col1:
     st.subheader("Input Location and Date")
     
-    # Initialize session state for coordinates
+    # Initialize session state for coordinates (using first row from Corrected_Input_Data.csv)
     if 'lat' not in st.session_state:
-        st.session_state.lat = 37.7749
+        st.session_state.lat = 32.82426656  # First row latitude
     if 'lon' not in st.session_state:
-        st.session_state.lon = -122.4194
+        st.session_state.lon = -117.23500108  # First row longitude
     
     # Input method selection
     input_method = st.radio(
@@ -182,7 +183,7 @@ with col1:
         })
         
         # Add historical points if available
-        if orig_points is not None and not orig_points.empty:
+    if orig_points is not None and not orig_points.empty:
             hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
             map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
@@ -213,42 +214,185 @@ with col2:
     st.subheader("Prediction and Features")
     
     if run:
-        with st.spinner("Computing prediction..."):
-            try:
-                # Import the feature service
-                from feature_service import FeatureService
+        # Create progress tracking containers
+        progress_container = st.container()
+        results_container = st.container()
+        
+        with progress_container:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            stage_details = st.empty()
+        
+        try:
+            # Import the feature service
+            from feature_service import FeatureService
+            
+            # Initialize the feature service
+            status_text.text("🔧 Initializing feature service...")
+            progress_bar.progress(10)
+            feature_service = FeatureService()
+            
+            # Progress tracking callback
+            def progress_callback(stage: str, message: str, data: dict):
+                stage_progress = {
+                    'SSURGO': 30,
+                    'USGS NED 10m': 50,
+                    'Meteostat': 70,
+                    'CMIP6 CESM2': 85
+                }
+                progress_bar.progress(stage_progress.get(stage, 90))
+                status_text.text(f"🔄 {stage}: {message}")
+                if data:
+                    stage_details.json(data)
+            
+            # Get features for the selected location and date
+            status_text.text("📊 Computing features...")
+            features = feature_service.compute_features(
+                float(st.session_state.lat),
+                float(st.session_state.lon),
+                datetime.combine(date, datetime.min.time()) if hasattr(date, 'year') else date,
+                progress_callback=progress_callback
+            )
+            
+            # Make prediction
+            status_text.text("🤖 Making prediction...")
+            progress_bar.progress(95)
+            prediction = feature_service.predict(features)
+            
+            # Complete
+            progress_bar.progress(100)
+            status_text.text("✅ Prediction completed!")
+            stage_details.empty()
+            
+            with results_container:
+                st.success("✅ Analysis Complete!")
                 
-                # Initialize the feature service
-                feature_service = FeatureService()
+                # Show prediction with enhanced styling
+                st.subheader("🎯 Prediction Results")
+                col_pred1, col_pred2, col_pred3 = st.columns([1, 1, 1])
                 
-                # Get features for the selected location and date
-                features = feature_service.compute_features(
-                    float(st.session_state.lat),
-                    float(st.session_state.lon),
-                    datetime.combine(date, datetime.min.time()) if hasattr(date, 'year') else date
-                )
-                
-                # Make prediction
-                prediction = feature_service.predict(features)
-                
-                # Display results
-                st.success("✅ Prediction completed!")
-                
-                # Show prediction
-                col_pred1, col_pred2 = st.columns([1, 1])
                 with col_pred1:
-                    st.metric("Stability Score", f"{prediction['stability_score']:.3f}")
-                with col_pred2:
-                    risk_level = "High" if prediction['stability_score'] < 0.5 else "Medium" if prediction['stability_score'] < 0.7 else "Low"
-                    st.metric("Risk Level", risk_level)
+                    stability_score = prediction['stability_score']
+                    st.metric("Stability Score", f"{stability_score:.4f}")
                 
-                # Show features
+                with col_pred2:
+                    risk_level = "🔴 High Risk" if stability_score < 0.3 else "🟡 Medium Risk" if stability_score < 0.7 else "🟢 Low Risk"
+                    st.metric("Risk Assessment", risk_level)
+                
+                with col_pred3:
+                    confidence = "High" if abs(stability_score - 0.5) > 0.3 else "Medium" if abs(stability_score - 0.5) > 0.15 else "Low"
+                    st.metric("Prediction Confidence", confidence)
+                
+                # Enhanced feature display
                 st.subheader("📊 Computed Features")
-                feature_df = pd.DataFrame(list(features.items()), columns=['Feature', 'Value'])
-                st.dataframe(feature_df, use_container_width=True)
+                
+                # Filter out metadata
+                display_features = {k: v for k, v in features.items() if not k.startswith('_')}
+                
+                # Create feature dataframe with units
+                feature_data = []
+                units_dict = features.get('_units', {})
+                
+                for feature_name, value in display_features.items():
+                    unit = units_dict.get(feature_name, '')
+                    if isinstance(value, (int, float)) and not pd.isna(value):
+                        formatted_value = f"{value:.6f}" if abs(value) < 1 else f"{value:.2f}"
+                    else:
+                        formatted_value = str(value)
+                    
+                    feature_data.append({
+                        'Feature': feature_name,
+                        'Value': formatted_value,
+                        'Unit': unit,
+                        'Category': _categorize_feature(feature_name)
+                    })
+                
+                feature_df = pd.DataFrame(feature_data)
+                
+                # Display features by category
+                categories = feature_df['Category'].unique()
+                for category in sorted(categories):
+                    with st.expander(f"📋 {category} Features", expanded=True):
+                        cat_features = feature_df[feature_df['Category'] == category][['Feature', 'Value', 'Unit']]
+                        st.dataframe(cat_features, use_container_width=True, hide_index=True)
+                
+                # SHAP Values Analysis
+                st.subheader("🔍 Feature Importance (SHAP Analysis)")
+                
+                try:
+                    # Prepare feature vector for SHAP
+                    from feature_service import REQUIRED_FEATURES
+                    X = pd.DataFrame([{k: display_features.get(k, np.nan) for k in REQUIRED_FEATURES}])
+                    X = X.fillna(0)
+                    
+                    # Create SHAP explainer
+                    explainer = shap.Explainer(feature_service.model)
+                    shap_values = explainer(X)
+                    
+                    # Display SHAP values
+                    col_shap1, col_shap2 = st.columns([1, 1])
+                    
+                    with col_shap1:
+                        st.markdown("**SHAP Feature Contributions:**")
+                        
+                        # Create SHAP summary
+                        shap_data = []
+                        for i, feature in enumerate(REQUIRED_FEATURES):
+                            shap_val = shap_values.values[0][i] if len(shap_values.values) > 0 else 0
+                            shap_data.append({
+                                'Feature': feature,
+                                'SHAP Value': f"{shap_val:.6f}",
+                                'Impact': "🔴 Increases Risk" if shap_val > 0 else "🟢 Decreases Risk" if shap_val < 0 else "⚪ Neutral"
+                            })
+                        
+                        shap_df = pd.DataFrame(shap_data)
+                        shap_df = shap_df.reindex(shap_df['SHAP Value'].abs().sort_values(ascending=False).index)
+                        st.dataframe(shap_df, use_container_width=True, hide_index=True)
+                    
+                    with col_shap2:
+                        st.markdown("**SHAP Waterfall Plot:**")
+                        
+                        # Create SHAP waterfall plot
+                        fig, ax = plt.subplots(figsize=(10, 8))
+                        shap.waterfall_plot(shap_values[0], show=False)
+                    st.pyplot(fig)
+                        plt.close()
+                
+                except Exception as shap_error:
+                    st.warning(f"SHAP analysis failed: {shap_error}")
+                    
+                    # Fallback: Simple feature importance
+                    st.markdown("**Feature Values (Fallback Display):**")
+                    importance_data = []
+                    for feature_name, value in display_features.items():
+                        importance_data.append({
+                            'Feature': feature_name,
+                            'Value': f"{value:.6f}" if isinstance(value, (int, float)) and not pd.isna(value) else str(value)
+                        })
+                    
+                    importance_df = pd.DataFrame(importance_data)
+                    st.dataframe(importance_df, use_container_width=True, hide_index=True)
 
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
-                st.exception(e)
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            stage_details.empty()
+            st.error(f"❌ Prediction failed: {e}")
+            st.exception(e)
     else:
         st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
+
+# Helper function for categorizing features
+def _categorize_feature(feature_name: str) -> str:
+    """Categorize features for better organization."""
+    feature_lower = feature_name.lower()
+    if 'slope' in feature_lower:
+        return "🏔️ Terrain & Slope"
+    elif any(term in feature_lower for term in ['prcp', 'precipitation']):
+        return "🌧️ Precipitation"
+    elif any(term in feature_lower for term in ['bulk', 'density', 'horizon', 'soil']):
+        return "🌱 Soil Properties"
+    elif 'flux' in feature_lower:
+        return "🌊 Climate Model (CMIP6)"
+    else:
+        return "📊 Other Features"

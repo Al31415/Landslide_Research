@@ -30,4 +30,5 @@ streamlit-folium>=0.18.0
 tqdm>=4.60.0
 
 # Machine learning (for weather forecast analysis)
-scikit-learn>=1.0.0 
+scikit-learn>=1.0.0
+shap>=0.41.0 
