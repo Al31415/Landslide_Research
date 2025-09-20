@@ -377,14 +377,23 @@ with col2:
                         st.markdown("**SHAP Waterfall Plot:**")
                         
                         # Create SHAP waterfall plot for positive class if multi-output
-                        if values_array.ndim == 3:
-                            exp = shap_values[0, class_idx]
-                        else:
-                            exp = shap_values[0]
-                        fig = plt.figure(figsize=(10, 8))
-                        shap.plots.waterfall(exp, show=False)
-                        st.pyplot(fig)
-                        plt.close(fig)
+                        try:
+                            if values_array.ndim == 3 and values_array.shape[2] > 1:
+                                # Multi-output: select positive class (index 1)
+                                exp = shap_values[0][:, 1]
+                            elif values_array.ndim == 2:
+                                # Single output or already selected class
+                                exp = shap_values[0]
+                            else:
+                                exp = shap_values[0]
+                            
+                            fig = plt.figure(figsize=(10, 8))
+                            shap.plots.waterfall(exp, show=False)
+                            st.pyplot(fig)
+                            plt.close(fig)
+                        except Exception as waterfall_error:
+                            st.warning(f"Waterfall plot failed: {waterfall_error}")
+                            st.text("SHAP values shape: " + str(values_array.shape))
                 
                 except Exception as shap_error:
                     st.warning(f"SHAP analysis failed: {shap_error}")
