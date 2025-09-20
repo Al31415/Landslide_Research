@@ -183,7 +183,7 @@ with col1:
         })
         
         # Add historical points if available
-    if orig_points is not None and not orig_points.empty:
+        if orig_points is not None and not orig_points.empty:
             hist_data = orig_points.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
             map_data = pd.concat([map_data, hist_data], ignore_index=True)
         
@@ -355,7 +355,7 @@ with col2:
                         # Create SHAP waterfall plot
                         fig, ax = plt.subplots(figsize=(10, 8))
                         shap.waterfall_plot(shap_values[0], show=False)
-                    st.pyplot(fig)
+                        st.pyplot(fig)
                         plt.close()
                 
                 except Exception as shap_error:
