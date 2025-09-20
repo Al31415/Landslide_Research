@@ -352,13 +352,17 @@ with col2:
                         # Create SHAP summary
                         shap_data = []
                         values_array = np.asarray(shap_values.values)
+                        # Handle multi-output (e.g., binary classification: two columns)
+                        if values_array.ndim == 3:
+                            class_idx = 1 if values_array.shape[2] > 1 else 0
+                            contribs = values_array[0, :, class_idx]
+                        elif values_array.ndim == 2:
+                            contribs = values_array[0, :]
+                        else:
+                            contribs = values_array.ravel()
+
                         for i, feature in enumerate(REQUIRED_FEATURES):
-                            raw_val = values_array[0, i] if values_array.size > 0 else 0.0
-                            # Coerce to scalar float
-                            if np.isscalar(raw_val):
-                                val = float(raw_val)
-                            else:
-                                val = float(np.asarray(raw_val).ravel()[0])
+                            val = float(contribs[i]) if i < len(contribs) else 0.0
                             shap_data.append({
                                 'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
@@ -372,12 +376,15 @@ with col2:
                     with col_shap2:
                         st.markdown("**SHAP Waterfall Plot:**")
                         
-                        # Create SHAP waterfall plot
-                        fig, ax = plt.subplots(figsize=(10, 8))
-                        # Ensure SHAP values indexable as expected
-                        shap.waterfall_plot(shap_values[0], show=False)
+                        # Create SHAP waterfall plot for positive class if multi-output
+                        if values_array.ndim == 3:
+                            exp = shap_values[0, class_idx]
+                        else:
+                            exp = shap_values[0]
+                        fig = plt.figure(figsize=(10, 8))
+                        shap.plots.waterfall(exp, show=False)
                         st.pyplot(fig)
-                        plt.close()
+                        plt.close(fig)
                 
                 except Exception as shap_error:
                     st.warning(f"SHAP analysis failed: {shap_error}")
