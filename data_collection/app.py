@@ -351,23 +351,30 @@ with col2:
                         
                         # Create SHAP summary
                         shap_data = []
+                        values_array = np.asarray(shap_values.values)
                         for i, feature in enumerate(REQUIRED_FEATURES):
-                            shap_val = shap_values.values[0][i] if len(shap_values.values) > 0 else 0
+                            raw_val = values_array[0, i] if values_array.size > 0 else 0.0
+                            # Coerce to scalar float
+                            if np.isscalar(raw_val):
+                                val = float(raw_val)
+                            else:
+                                val = float(np.asarray(raw_val).ravel()[0])
                             shap_data.append({
                                 'Feature': feature,
-                                'SHAP Value': f"{shap_val:.6f}",
-                                'Impact': "🔴 Increases Risk" if shap_val > 0 else "🟢 Decreases Risk" if shap_val < 0 else "⚪ Neutral"
+                                'SHAP Value': f"{val:.6f}",
+                                'Impact': "🔴 Increases Risk" if val > 0 else "🟢 Decreases Risk" if val < 0 else "⚪ Neutral",
+                                'abs_value': abs(val)
                             })
                         
-                        shap_df = pd.DataFrame(shap_data)
-                        shap_df = shap_df.reindex(shap_df['SHAP Value'].abs().sort_values(ascending=False).index)
-                        st.dataframe(shap_df, use_container_width=True, hide_index=True)
+                        shap_df = pd.DataFrame(shap_data).sort_values(by='abs_value', ascending=False)
+                        st.dataframe(shap_df[['Feature','SHAP Value','Impact']], use_container_width=True, hide_index=True)
                 
                     with col_shap2:
                         st.markdown("**SHAP Waterfall Plot:**")
                         
                         # Create SHAP waterfall plot
                         fig, ax = plt.subplots(figsize=(10, 8))
+                        # Ensure SHAP values indexable as expected
                         shap.waterfall_plot(shap_values[0], show=False)
                         st.pyplot(fig)
                         plt.close()
