@@ -391,7 +391,6 @@ with col2:
 
                 except Exception as e:
                     st.warning(f"SHAP analysis failed: {e}")
-
                     st.markdown("**Feature Values (Fallback Display):**")
                     importance_data = []
                     for feature_name, value in display_features.items():
