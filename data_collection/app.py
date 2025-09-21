@@ -8,8 +8,6 @@ import os
 import requests
 import json
 import streamlit.components.v1 as components
-import folium
-from streamlit_folium import st_folium
 import shap
 
 def _categorize_feature(feature_name: str) -> str:
@@ -207,6 +205,14 @@ with col1:
         # Use Folium + streamlit-folium for true click-to-select
         st.info("🗺️ Click anywhere on the map to select a location.")
 
+        # Local import to avoid linter missing-import warning when not installed in dev env
+        try:
+            import folium  # type: ignore
+            from streamlit_folium import st_folium  # type: ignore
+        except Exception as _folium_err:
+            st.error("Folium components are unavailable. Please ensure folium and streamlit-folium are installed.")
+            st.stop()
+
         # Create a Folium map centered on current coords
         fmap = folium.Map(location=[float(st.session_state.lat), float(st.session_state.lon)], zoom_start=6, control_scale=True)
         folium.Marker(location=[float(st.session_state.lat), float(st.session_state.lon)]).add_to(fmap)
@@ -332,73 +338,60 @@ with col2:
                 
                 # SHAP Values Analysis
                 st.subheader("🔍 Feature Importance (SHAP Analysis)")
-                
+
                 try:
                     # Prepare feature vector for SHAP
                     from feature_service import REQUIRED_FEATURES
                     X = pd.DataFrame([{k: display_features.get(k, np.nan) for k in REQUIRED_FEATURES}])
                     X = X.fillna(0)
-                    
+
                     # Create SHAP explainer
                     explainer = shap.Explainer(feature_service.model)
                     shap_values = explainer(X)
-                    
-                    # Display SHAP values
+
+                    # Compute contributions and explanation for plotting
+                    values_array = np.asarray(shap_values.values)
+                    if values_array.ndim == 3 and values_array.shape[2] > 1:
+                        contribs = values_array[0, :, 1]
+                        exp = shap_values[:, :, 1][0]
+                    elif values_array.ndim == 2:
+                        contribs = values_array[0, :]
+                        exp = shap_values[0]
+                    else:
+                        contribs = values_array.ravel()
+                        exp = shap_values[0]
+
+                    # Display SHAP tables and plot
                     col_shap1, col_shap2 = st.columns([1, 1])
-                    
+
                     with col_shap1:
                         st.markdown("**SHAP Feature Contributions:**")
-                        
-                        # Create SHAP summary
                         shap_data = []
-                        values_array = np.asarray(shap_values.values)
-                        # Handle multi-output (e.g., binary classification: two columns)
-                        if values_array.ndim == 3:
-                            class_idx = 1 if values_array.shape[2] > 1 else 0
-                            contribs = values_array[0, :, class_idx]
-                        elif values_array.ndim == 2:
-                            contribs = values_array[0, :]
-            else:
-                            contribs = values_array.ravel()
-
                         for i, feature in enumerate(REQUIRED_FEATURES):
                             val = float(contribs[i]) if i < len(contribs) else 0.0
                             shap_data.append({
-                    'Feature': feature,
+                                'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
                                 'Impact': "🔴 Increases Risk" if val > 0 else "🟢 Decreases Risk" if val < 0 else "⚪ Neutral",
                                 'abs_value': abs(val)
                             })
-                        
                         shap_df = pd.DataFrame(shap_data).sort_values(by='abs_value', ascending=False)
                         st.dataframe(shap_df[['Feature','SHAP Value','Impact']], use_container_width=True, hide_index=True)
-                
+
                     with col_shap2:
                         st.markdown("**SHAP Waterfall Plot:**")
-                        
-                        # Create SHAP waterfall plot for positive class if multi-output
                         try:
-                            if values_array.ndim == 3 and values_array.shape[2] > 1:
-                                # Multi-output: select positive class (index 1)
-                                exp = shap_values[0][:, 1]
-                            elif values_array.ndim == 2:
-                                # Single output or already selected class
-                                exp = shap_values[0]
-                            else:
-                                exp = shap_values[0]
-                            
                             fig = plt.figure(figsize=(10, 8))
                             shap.plots.waterfall(exp, show=False)
-                    st.pyplot(fig)
+                            st.pyplot(fig)
                             plt.close(fig)
-                        except Exception as waterfall_error:
-                            st.warning(f"Waterfall plot failed: {waterfall_error}")
+                        except Exception as e2:
+                            st.warning(f"Waterfall plot failed: {e2}")
                             st.text("SHAP values shape: " + str(values_array.shape))
-                
-                except Exception as shap_error:
-                    st.warning(f"SHAP analysis failed: {shap_error}")
-                    
-                    # Fallback: Simple feature importance
+
+                except Exception as e:
+                    st.warning(f"SHAP analysis failed: {e}")
+
                     st.markdown("**Feature Values (Fallback Display):**")
                     importance_data = []
                     for feature_name, value in display_features.items():
@@ -406,7 +399,6 @@ with col2:
                             'Feature': feature_name,
                             'Value': f"{value:.6f}" if isinstance(value, (int, float)) and not pd.isna(value) else str(value)
                         })
-                    
                     importance_df = pd.DataFrame(importance_data)
                     st.dataframe(importance_df, use_container_width=True, hide_index=True)
 
