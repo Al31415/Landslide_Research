@@ -37,22 +37,22 @@ REQUIRED_FEATURES = [
 ]
 
 class FeatureService:
-    def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
-                 model_path: str = str(Path(__file__).parent.parent / 'models' / 'best_model.joblib')):
-        self.data_dir = data_dir
-        self.model_path = model_path
-        self._load_model()
-        self.ssurgo = SSURGODataCollector()
-        self.usgs = SlopeDataCollector()
-        self.meteostat = MeteostatDataCollector()
-        self.cmip = CMIPDataCollector(self.data_dir)
-        self._rolling = None
-        # Optional CSV cache for strict validation mode
-        csv_path = Path(self.data_dir) / 'Corrected_Input_Data.csv'
-        try:
-            self._csv_df = pd.read_csv(csv_path) if csv_path.exists() else None
-        except Exception:
-            self._csv_df = None
+	def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
+	             model_path: str = str(Path(__file__).parent.parent / 'models' / 'best_model.joblib')):
+		self.data_dir = data_dir
+		self.model_path = model_path
+		self._load_model()
+		self.ssurgo = SSURGODataCollector()
+		self.usgs = SlopeDataCollector()
+		self.meteostat = MeteostatDataCollector()
+		self.cmip = CMIPDataCollector(self.data_dir)
+		self._rolling = None
+		# Optional CSV cache for strict validation mode
+		csv_path = Path(self.data_dir) / 'Corrected_Input_Data.csv'
+		try:
+			self._csv_df = pd.read_csv(csv_path) if csv_path.exists() else None
+		except Exception:
+			self._csv_df = None
 
 	def _load_model(self) -> None:
 		self.model = joblib.load(self.model_path)
@@ -79,9 +79,9 @@ class FeatureService:
 		s = s.str.replace('C', '5', regex=False)
 		return pd.to_numeric(s, errors='coerce')
 
-    def compute_features(self, lat: float, lon: float, event_date: datetime,
-                         progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
-                         strict_from_csv: bool = False) -> Dict[str, Any]:
+	def compute_features(self, lat: float, lon: float, event_date: datetime,
+	                     progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+	                     strict_from_csv: bool = False) -> Dict[str, Any]:
 		features: Dict[str, Any] = {}
 		units: Dict[str, str] = {}
 		raw: Dict[str, Any] = {}
@@ -90,41 +90,41 @@ class FeatureService:
 			if progress_callback is not None:
 				progress_callback(stage, message, data or {})
 
-        # Optional strict CSV override for validation/playground parity
-        if strict_from_csv and self._csv_df is not None and len(self._csv_df) > 0:
-            try:
-                row = self._match_csv_row(lat, lon, event_date)
-                if row is not None:
-                    report('CSV Override', 'Using values from Corrected_Input_Data.csv for strict validation.', {})
-                    for k in REQUIRED_FEATURES:
-                        if k in row.index:
-                            v = row[k]
-                            try:
-                                features[k] = float(v)
-                            except Exception:
-                                features[k] = v
-                    # Define units for known fields
-                    units.update({
-                        'Slope From USGS Elevation Data': 'degrees',
-                        'Slope From SSURGO': 'degrees',
-                        'max_1_day_prcp': 'mm',
-                        'max_3_day_prcp': 'mm',
-                        'max_7_day_prcp': 'mm',
-                        'avg_30_day_prcp': 'mm/day',
-                        'avg_60_day_prcp': 'mm/day',
-                        'avg_90_day_prcp': 'mm/day',
-                        'avg_90_day_prcp_mean_flux': 'kg m^-2 s^-1',
-                        'avg_365_day_prcp_mean_flux': 'kg m^-2 s^-1',
-                        'Bulk Density': 'g/cm³',
-                        'Deepest Soil Horizon Layer': 'index',
-                    })
-                    features['_units'] = units
-                    features['_raw'] = raw
-                    return features
-            except Exception:
-                pass
+		# Optional strict CSV override for validation/playground parity
+		if strict_from_csv and self._csv_df is not None and len(self._csv_df) > 0:
+			try:
+				row = self._match_csv_row(lat, lon, event_date)
+				if row is not None:
+					report('CSV Override', 'Using values from Corrected_Input_Data.csv for strict validation.', {})
+					for k in REQUIRED_FEATURES:
+						if k in row.index:
+							v = row[k]
+							try:
+								features[k] = float(v)
+							except Exception:
+								features[k] = v
+					# Define units for known fields
+					units.update({
+						'Slope From USGS Elevation Data': 'degrees',
+						'Slope From SSURGO': 'degrees',
+						'max_1_day_prcp': 'mm',
+						'max_3_day_prcp': 'mm',
+						'max_7_day_prcp': 'mm',
+						'avg_30_day_prcp': 'mm/day',
+						'avg_60_day_prcp': 'mm/day',
+						'avg_90_day_prcp': 'mm/day',
+						'avg_90_day_prcp_mean_flux': 'kg m^-2 s^-1',
+						'avg_365_day_prcp_mean_flux': 'kg m^-2 s^-1',
+						'Bulk Density': 'g/cm³',
+						'Deepest Soil Horizon Layer': 'index',
+					})
+					features['_units'] = units
+					features['_raw'] = raw
+					return features
+			except Exception:
+				pass
 
-        # SSURGO (Playground logic)
+		# SSURGO (Playground logic)
 		report('SSURGO', 'Querying SSURGO soil properties using Playground logic...')
 		soil_features = self.ssurgo.get_soil_features_for_point(lat, lon)
 		features['Bulk Density'] = soil_features['bulk_density']
@@ -192,29 +192,29 @@ class FeatureService:
 		features['_raw'] = raw
 		return features
 
-    def _match_csv_row(self, lat: float, lon: float, event_date: datetime) -> Optional[pd.Series]:
-        if self._csv_df is None or self._csv_df.empty:
-            return None
-        df = self._csv_df.copy()
-        # Normalize date
-        df['event_date_norm'] = pd.to_datetime(df['event_date'], errors='coerce').dt.date
-        target_date = pd.to_datetime(event_date).date()
-        # Tolerant match on lat/lon
-        tol_lat = 1e-4
-        tol_lon = 1e-4
-        mask = (
-            (df['event_date_norm'] == target_date) &
-            (df['Latitude'].sub(lat).abs() <= tol_lat) &
-            (df['Longitude'].sub(lon).abs() <= tol_lon)
-        )
-        if not mask.any():
-            # Try nearest within small tolerance ignoring date (for debugging)
-            dlat = df['Latitude'].sub(lat).abs()
-            dlon = df['Longitude'].sub(lon).abs()
-            nearest_idx = (dlat + dlon).idxmin()
-            return df.iloc[nearest_idx]
-        row = df[mask].iloc[0]
-        return row
+	def _match_csv_row(self, lat: float, lon: float, event_date: datetime) -> Optional[pd.Series]:
+		if self._csv_df is None or self._csv_df.empty:
+			return None
+		df = self._csv_df.copy()
+		# Normalize date
+		df['event_date_norm'] = pd.to_datetime(df['event_date'], errors='coerce').dt.date
+		target_date = pd.to_datetime(event_date).date()
+		# Tolerant match on lat/lon
+		tol_lat = 1e-4
+		tol_lon = 1e-4
+		mask = (
+			(df['event_date_norm'] == target_date) &
+			(df['Latitude'].sub(lat).abs() <= tol_lat) &
+			(df['Longitude'].sub(lon).abs() <= tol_lon)
+		)
+		if not mask.any():
+			# Try nearest within small tolerance ignoring date (for debugging)
+			dlat = df['Latitude'].sub(lat).abs()
+			dlon = df['Longitude'].sub(lon).abs()
+			nearest_idx = (dlat + dlon).idxmin()
+			return df.iloc[nearest_idx]
+		row = df[mask].iloc[0]
+		return row
 
 	def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
 		X = pd.DataFrame([{k: features.get(k, np.nan) for k in REQUIRED_FEATURES}])

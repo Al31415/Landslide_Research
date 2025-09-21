@@ -342,7 +342,15 @@ class SSURGODataCollector:
             # Extract features using Playground logic
             first_row = aggregated_df.iloc[0]
             bulk_density = float(first_row.get('bulk_density', 0.0)) if pd.notna(first_row.get('bulk_density', 0.0)) else 0.0
-            slope_from_ssurgo = float(first_row.get('slope_r', 0.0)) if pd.notna(first_row.get('slope_r', 0.0)) else 0.0
+            # Match CSV behavior better: use maximum component slope_r observed (not weighted mean)
+            slope_from_ssurgo = 0.0
+            try:
+                if 'slope_r' in primary_df.columns:
+                    slope_from_ssurgo = float(pd.to_numeric(primary_df['slope_r'], errors='coerce').dropna().max())
+                elif 'slope' in primary_df.columns:
+                    slope_from_ssurgo = float(pd.to_numeric(primary_df['slope'], errors='coerce').dropna().max())
+            except Exception:
+                slope_from_ssurgo = float(first_row.get('slope_r', 0.0)) if pd.notna(first_row.get('slope_r', 0.0)) else 0.0
             
             # Get deepest soil horizon layer (hzname mapping)
             hzname_values = primary_df['hzname'].dropna().tolist() if 'hzname' in primary_df.columns else []

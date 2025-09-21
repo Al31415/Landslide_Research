@@ -97,16 +97,22 @@ class MeteostatDataCollector:
         # Get precipitation column
         prcp = data['prcp'].fillna(0)
         
-        # Calculate statistics
+        # Playground parity: use trailing window sums ending at event date
+        # (column names kept for backward compatibility)
+        last1 = float(prcp.tail(1).sum()) if len(prcp) >= 1 else 0.0
+        last3 = float(prcp.tail(3).sum()) if len(prcp) >= 3 else last1
+        last7 = float(prcp.tail(7).sum()) if len(prcp) >= 7 else last3
+        last14 = float(prcp.tail(14).sum()) if len(prcp) >= 14 else last7
+
         stats = {
-            'max_1_day_prcp': float(prcp.max()) if not prcp.empty else 0.0,
-            'max_3_day_prcp': float(prcp.rolling(window=3, min_periods=1).sum().max()) if len(prcp) >= 3 else 0.0,
-            'max_7_day_prcp': float(prcp.rolling(window=7, min_periods=1).sum().max()) if len(prcp) >= 7 else 0.0,
-            'max_14_day_prcp': float(prcp.rolling(window=14, min_periods=1).sum().max()) if len(prcp) >= 14 else 0.0,
-            'avg_30_day_prcp': float(prcp.tail(30).mean()) if len(prcp) >= 30 else 0.0,
-            'avg_60_day_prcp': float(prcp.tail(60).mean()) if len(prcp) >= 60 else 0.0,
-            'avg_90_day_prcp': float(prcp.tail(90).mean()) if len(prcp) >= 90 else 0.0,
-            'avg_365_day_prcp': float(prcp.tail(365).mean()) if len(prcp) >= 365 else 0.0
+            'max_1_day_prcp': last1,
+            'max_3_day_prcp': last3,
+            'max_7_day_prcp': last7,
+            'max_14_day_prcp': last14,
+            'avg_30_day_prcp': float(prcp.tail(30).mean()) if len(prcp) >= 30 else (float(prcp.mean()) if len(prcp) > 0 else 0.0),
+            'avg_60_day_prcp': float(prcp.tail(60).mean()) if len(prcp) >= 60 else (float(prcp.mean()) if len(prcp) > 0 else 0.0),
+            'avg_90_day_prcp': float(prcp.tail(90).mean()) if len(prcp) >= 90 else (float(prcp.mean()) if len(prcp) > 0 else 0.0),
+            'avg_365_day_prcp': float(prcp.tail(365).mean()) if len(prcp) >= 365 else (float(prcp.mean()) if len(prcp) > 0 else 0.0)
         }
         
         return stats
