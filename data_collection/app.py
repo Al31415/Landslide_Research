@@ -209,16 +209,41 @@ with col1:
         try:
             import folium  # type: ignore
             from streamlit_folium import st_folium  # type: ignore
-        except Exception as _folium_err:
+        except Exception:
             st.error("Folium components are unavailable. Please ensure folium and streamlit-folium are installed.")
             st.stop()
 
-        # Create a Folium map centered on current coords
-        fmap = folium.Map(location=[float(st.session_state.lat), float(st.session_state.lon)], zoom_start=6, control_scale=True)
-        folium.Marker(location=[float(st.session_state.lat), float(st.session_state.lon)]).add_to(fmap)
+        # Manage a dynamic key to force reliable re-renders if needed
+        if 'folium_key' not in st.session_state:
+            st.session_state.folium_key = 0
 
-        # Render and capture interactions
-        map_state = st_folium(fmap, height=420, key="folium_click_map")
+        with st.spinner("Loading map..."):
+            # Create a Folium map centered on current coords
+            fmap = folium.Map(
+                location=[float(st.session_state.lat), float(st.session_state.lon)],
+                zoom_start=6,
+                control_scale=True,
+                prefer_canvas=True,
+                tiles=None
+            )
+            folium.TileLayer(
+                tiles='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attr='© OpenStreetMap contributors'
+            ).add_to(fmap)
+            folium.Marker(location=[float(st.session_state.lat), float(st.session_state.lon)]).add_to(fmap)
+
+            # Render and capture interactions
+            map_state = st_folium(
+                fmap,
+                height=420,
+                key=f"folium_click_map_{st.session_state.folium_key}"
+            )
+
+        cols_reload = st.columns([1, 3])
+        with cols_reload[0]:
+            if st.button("🔁 Reload map", key="reload_folium"):
+                st.session_state.folium_key += 1
+                st.rerun()
 
         # Update on click
         if map_state and isinstance(map_state, dict) and map_state.get("last_clicked"):
@@ -342,14 +367,12 @@ with col2:
                 try:
                     # Prepare feature vector for SHAP
                     from feature_service import REQUIRED_FEATURES
-                    X = pd.DataFrame([{k: display_features.get(k, np.nan) for k in REQUIRED_FEATURES}])
-                    X = X.fillna(0)
+                    X = pd.DataFrame([{k: display_features.get(k, np.nan) for k in REQUIRED_FEATURES}]).fillna(0)
 
-                    # Create SHAP explainer
+                    # Create SHAP explainer and compute values
                     explainer = shap.Explainer(feature_service.model)
                     shap_values = explainer(X)
 
-                    # Compute contributions and explanation for plotting
                     values_array = np.asarray(shap_values.values)
                     if values_array.ndim == 3 and values_array.shape[2] > 1:
                         contribs = values_array[0, :, 1]
@@ -361,21 +384,20 @@ with col2:
                         contribs = values_array.ravel()
                         exp = shap_values[0]
 
-                    # Display SHAP tables and plot
                     col_shap1, col_shap2 = st.columns([1, 1])
 
                     with col_shap1:
                         st.markdown("**SHAP Feature Contributions:**")
-                        shap_data = []
+                        shap_rows = []
                         for i, feature in enumerate(REQUIRED_FEATURES):
                             val = float(contribs[i]) if i < len(contribs) else 0.0
-                            shap_data.append({
+                            shap_rows.append({
                                 'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
-                                'Impact': "🔴 Increases Risk" if val > 0 else "🟢 Decreases Risk" if val < 0 else "⚪ Neutral",
+                                'Impact': ("🔴 Increases Risk" if val > 0 else ("🟢 Decreases Risk" if val < 0 else "⚪ Neutral")),
                                 'abs_value': abs(val)
                             })
-                        shap_df = pd.DataFrame(shap_data).sort_values(by='abs_value', ascending=False)
+                        shap_df = pd.DataFrame(shap_rows).sort_values(by='abs_value', ascending=False)
                         st.dataframe(shap_df[['Feature','SHAP Value','Impact']], use_container_width=True, hide_index=True)
 
                     with col_shap2:
@@ -392,16 +414,15 @@ with col2:
                 except Exception as e:
                     st.warning(f"SHAP analysis failed: {e}")
                     st.markdown("**Feature Values (Fallback Display):**")
-                    importance_data = []
+                    fallback_rows = []
                     for feature_name, value in display_features.items():
-                        importance_data.append({
+                        fallback_rows.append({
                             'Feature': feature_name,
                             'Value': f"{value:.6f}" if isinstance(value, (int, float)) and not pd.isna(value) else str(value)
                         })
-                    importance_df = pd.DataFrame(importance_data)
-                    st.dataframe(importance_df, use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
 
-                # 3D Topographic Visualization
+                # 3D Topographic Visualization (static)
                 st.subheader("🗺️ 3D Topographic Visualization (Slope-colored)")
                 try:
                     from slope_data_collector import SlopeDataCollector
@@ -417,22 +438,21 @@ with col2:
                 except Exception as topo_err:
                     st.warning(f"3D visualization failed: {topo_err}")
 
-                # Interactive 3D button (appears after prediction only)
-                st.markdown("\n")
-                if st.button("🌐 Open Interactive 3D Topography", key="open_plotly_3d"):
-                    try:
-                        from slope_data_collector import SlopeDataCollector
-                        collector = SlopeDataCollector()
-                        with st.spinner("Building interactive 3D view (Plotly)..."):
-                            fig_int, res_label = collector.build_interactive_3d(
-                                lat=float(st.session_state.lat),
-                                lon=float(st.session_state.lon),
-                                half_side_m=200
-                            )
-                        st.info(f"Resolution used: {res_label}")
-                        st.plotly_chart(fig_int, use_container_width=True)
-                    except Exception as inter_err:
-                        st.warning(f"Interactive 3D failed: {inter_err}")
+                # Interactive 3D (auto-rendered under static)
+                try:
+                    from slope_data_collector import SlopeDataCollector
+                    collector = SlopeDataCollector()
+                    with st.spinner("Building interactive 3D view (Plotly)..."):
+                        fig_int, res_label = collector.build_interactive_3d(
+                            lat=float(st.session_state.lat),
+                            lon=float(st.session_state.lon),
+                            half_side_m=200
+                        )
+                    fig_int.update_layout(height=520)
+                    st.info(f"Interactive 3D resolution used: {res_label}")
+                    st.plotly_chart(fig_int, use_container_width=True)
+                except Exception as inter_err:
+                    st.warning(f"Interactive 3D failed: {inter_err}")
 
         except Exception as e:
             progress_bar.empty()
