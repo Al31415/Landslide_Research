@@ -418,6 +418,23 @@ with col2:
                 except Exception as topo_err:
                     st.warning(f"3D visualization failed: {topo_err}")
 
+                # Interactive 3D button (appears after prediction only)
+                st.markdown("\n")
+                if st.button("🌐 Open Interactive 3D Topography", key="open_plotly_3d"):
+                    try:
+                        from slope_data_collector import SlopeDataCollector
+                        collector = SlopeDataCollector()
+                        with st.spinner("Building interactive 3D view (Plotly)..."):
+                            fig_int, res_label = collector.build_interactive_3d(
+                                lat=float(st.session_state.lat),
+                                lon=float(st.session_state.lon),
+                                half_side_m=200
+                            )
+                        st.info(f"Resolution used: {res_label}")
+                        st.plotly_chart(fig_int, use_container_width=True)
+                    except Exception as inter_err:
+                        st.warning(f"Interactive 3D failed: {inter_err}")
+
         except Exception as e:
             progress_bar.empty()
             status_text.empty()

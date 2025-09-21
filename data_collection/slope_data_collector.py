@@ -26,6 +26,7 @@ from osgeo import gdal
 from shapely.geometry import Point, Polygon
 from PIL import Image
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+import plotly.graph_objects as go
 
 
 class SlopeDataCollector:
@@ -515,6 +516,91 @@ class SlopeDataCollector:
                 fig.savefig(out_png, dpi=200, bbox_inches='tight')
 
             return fig
+        finally:
+            if 'ds' in locals() and ds is not None:
+                ds = None
+            if dem_file.exists():
+                dem_file.unlink()
+
+    def build_interactive_3d(self, lat: float, lon: float,
+                              output_dir: str = "temp_dem",
+                              half_side_m: int = 200) -> Tuple[go.Figure, str]:
+        """
+        Build an interactive 3D topographic Plotly figure (pan/zoom/rotate).
+        Returns (figure, resolution_label).
+        """
+        Path(output_dir).mkdir(exist_ok=True)
+
+        # Prefer ~10 m if possible by requesting a compact window
+        region = self._offset(lat, lon, metres=max(2_000, half_side_m * 4))
+        dem_file = Path(output_dir) / f"dem_3d_plotly_{lat:.5f}_{lon:.5f}.tif"
+        if not self._download_elevation_data(region, str(dem_file)):
+            raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
+
+        try:
+            # Read DEM (GDAL preferred)
+            dem = None
+            ds = None
+            try:
+                ds = gdal.Open(str(dem_file))
+                dem = ds.ReadAsArray()
+                gt = ds.GetGeoTransform()
+            except Exception:
+                img = Image.open(str(dem_file))
+                dem = np.array(img)
+                px_size = 10.0
+                gt = (lon - (dem.shape[1] * px_size)/2.0, px_size, 0, lat + (dem.shape[0] * px_size)/2.0, 0, -px_size)
+
+            h, w = dem.shape
+
+            # Terrain attributes (slope for coloring)
+            attrs = self._load_dem_and_attributes(str(dem_file))
+            slope = attrs['slope_degrees']
+
+            # Crop window
+            ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
+            dem_c = dem[ys, xs]
+            slope_c = slope[ys, xs]
+
+            # Downsample for performance
+            size_y, size_x = dem_c.shape
+            target = 200
+            stride = int(max(1, np.ceil(max(size_x, size_y) / target)))
+            if stride > 1:
+                dem_c = dem_c[::stride, ::stride]
+                slope_c = slope_c[::stride, ::stride]
+                size_y, size_x = dem_c.shape
+
+            extent_m = half_side_m
+            x_lin = np.linspace(-extent_m, extent_m, size_x)
+            y_lin = np.linspace(-extent_m, extent_m, size_y)
+            X, Y = np.meshgrid(x_lin, y_lin)
+
+            # Resolution label detection (approximate)
+            try:
+                m_per_deg_lat = 110540.0
+                m_per_deg_lon = 111320.0 * math.cos(math.radians(lat))
+                px_lat_m = abs(gt[5]) * m_per_deg_lat if ds is not None else 10.0
+                px_lon_m = abs(gt[1]) * m_per_deg_lon if ds is not None else 10.0
+                px_m = (px_lat_m + px_lon_m) / 2.0
+                res_label = "10 m (1/3 arc-second)" if px_m <= 15.0 else "30 m (1 arc-second)"
+            except Exception:
+                res_label = "Unknown resolution"
+
+            # Center point elevation
+            px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
+            if 0 <= px_c < w and 0 <= py_c < h:
+                center_z = float(dem[int(py_c), int(px_c)])
+            else:
+                center_z = float(np.nanmean(dem_c))
+
+            # Build Plotly figure
+            surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
+            marker = go.Scatter3d(x=[0], y=[0], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
+            fig = go.Figure(data=[surface, marker])
+            fig.update_scenes(xaxis_title='m East/West', yaxis_title='m North/South', zaxis_title='Elevation (m)')
+            fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
+            return fig, res_label
         finally:
             if 'ds' in locals() and ds is not None:
                 ds = None
