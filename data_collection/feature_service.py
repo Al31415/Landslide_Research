@@ -15,7 +15,7 @@ try:
 	from .slope_data_collector import SlopeDataCollector
 	from .meteostat_data_collector import MeteostatDataCollector
 	from .cmip_data_collector import CMIPDataCollector
-except ImportError:
+except Exception:
 	from ssurgo_data_collector import SSURGODataCollector
 	from slope_data_collector import SlopeDataCollector
 	from meteostat_data_collector import MeteostatDataCollector

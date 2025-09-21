@@ -22,7 +22,11 @@ except ImportError:
     RICHDEM_AVAILABLE = False
     print("Warning: richdem not available. Using fallback slope calculation.")
 import shapefile
-from osgeo import gdal
+try:
+    from osgeo import gdal  # type: ignore
+    GDAL_AVAILABLE = True
+except Exception:
+    GDAL_AVAILABLE = False
 from shapely.geometry import Point, Polygon
 from PIL import Image
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -542,9 +546,12 @@ class SlopeDataCollector:
             dem = None
             ds = None
             try:
-                ds = gdal.Open(str(dem_file))
-                dem = ds.ReadAsArray()
-                gt = ds.GetGeoTransform()
+                if GDAL_AVAILABLE:
+                    ds = gdal.Open(str(dem_file))
+                    dem = ds.ReadAsArray()
+                    gt = ds.GetGeoTransform()
+                else:
+                    raise RuntimeError("GDAL not available")
             except Exception:
                 img = Image.open(str(dem_file))
                 dem = np.array(img)
