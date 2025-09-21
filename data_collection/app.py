@@ -422,23 +422,7 @@ with col2:
                         })
                     st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
 
-                # 3D Topographic Visualization (static)
-                st.subheader("🗺️ 3D Topographic Visualization (Slope-colored)")
-                try:
-                    from slope_data_collector import SlopeDataCollector
-                    collector = SlopeDataCollector()
-                    with st.spinner("Rendering 3D topography..."):
-                        fig3d = collector.plot_terrain_3d(
-                            lat=float(st.session_state.lat),
-                            lon=float(st.session_state.lon),
-                            half_side_m=200,
-                            save_plots=False
-                        )
-                    st.pyplot(fig3d)
-                except Exception as topo_err:
-                    st.warning(f"3D visualization failed: {topo_err}")
-
-                # Interactive 3D (auto-rendered under static)
+                # Interactive 3D (auto-rendered)
                 try:
                     from slope_data_collector import SlopeDataCollector
                     collector = SlopeDataCollector()
@@ -453,6 +437,68 @@ with col2:
                     st.plotly_chart(fig_int, use_container_width=True)
                 except Exception as inter_err:
                     st.warning(f"Interactive 3D failed: {inter_err}")
+
+                # AI-Assisted Slope/Soil Summary (uses OpenAI 4o)
+                st.subheader("🧠 AI Slope & Soil Summary")
+                import os
+                openai_key = os.environ.get("OPENAI_API_KEY")
+                if 'openai_api_key' in st.session_state and st.session_state.openai_api_key:
+                    openai_key = st.session_state.openai_api_key
+                if not openai_key:
+                    with st.expander("Provide OpenAI API Key to enable AI summary", expanded=False):
+                        key_input = st.text_input("OpenAI API Key", type="password")
+                        if st.button("Save Key", key="save_openai_key") and key_input:
+                            st.session_state.openai_api_key = key_input
+                            st.success("Key saved for this session. Click the generate button below.")
+
+                if st.button("🧠 Generate Slope & Soil Summary", key="gen_ai_summary"):
+                    try:
+                        if not openai_key and 'openai_api_key' in st.session_state:
+                            openai_key = st.session_state.openai_api_key
+                        if not openai_key:
+                            st.warning("OpenAI key not set.")
+                        else:
+                            from openai import OpenAI
+                            client = OpenAI(api_key=openai_key)
+
+                            # Prepare concise context
+                            summary_payload = {
+                                "lat": float(st.session_state.lat),
+                                "lon": float(st.session_state.lon),
+                                "event_date": str(date),
+                                "prediction": {
+                                    "stability_score": float(stability_score),
+                                    "risk_level": risk_level,
+                                },
+                                "features": {k: display_features.get(k) for k in display_features.keys()},
+                                "units": units_dict,
+                            }
+
+                            sys_prompt = (
+                                "You are a geotechnical assistant. Infer terrain and soil characteristics near the given coordinates "
+                                "based on the numeric features and risk prediction. Explain likely soil/rock type, drainage, slope stability factors, "
+                                "and data caveats. Be concise, actionable, and avoid overstating certainty."
+                            )
+                            user_prompt = (
+                                "Using this context, summarize what the slope/soil are likely like, including inferred soil/rock type if possible, "
+                                "and any geomorphological cues that would matter for stability."
+                            )
+
+                            with st.spinner("Generating AI summary..."):
+                                resp = client.chat.completions.create(
+                                    model="gpt-4o",
+                                    messages=[
+                                        {"role": "system", "content": sys_prompt},
+                                        {"role": "user", "content": f"Context: {summary_payload}\n\n{user_prompt}"},
+                                    ],
+                                    temperature=0.4,
+                                    max_tokens=500,
+                                )
+                            ai_text = resp.choices[0].message.content if resp and resp.choices else ""
+                            st.markdown(ai_text)
+                            st.caption("Model: gpt-4o")
+                    except Exception as ai_err:
+                        st.warning(f"AI summary failed: {ai_err}")
 
         except Exception as e:
             progress_bar.empty()
