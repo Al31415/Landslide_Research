@@ -14,20 +14,20 @@ def _categorize_feature(feature_name: str) -> str:
     """Categorize features for better organization."""
     feature_lower = feature_name.lower()
     if 'slope' in feature_lower:
-        return "🏔️ Terrain & Slope"
+        return "Terrain & Slope"
     elif any(term in feature_lower for term in ['prcp', 'precipitation']):
-        return "🌧️ Precipitation"
+        return "Precipitation"
     elif any(term in feature_lower for term in ['bulk', 'density', 'horizon', 'soil']):
-        return "🌱 Soil Properties"
+        return "Soil Properties"
     elif 'flux' in feature_lower:
-        return "🌊 Climate Model (CMIP6)"
+        return "Climate Model (CMIP6)"
     else:
-        return "📊 Other Features"
+        return "Other Features"
 
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
 st.title("US Stability Predictor (CMIP + Meteostat + SSURGO + USGS)")
-st.caption("🚀 Version 2.0 - Interactive Map Features | Last Updated: 2025-01-18")
+st.caption("Version 2.0 - Interactive Map Features | Last Updated: 2025-01-18")
 
 def geocode_location(location_name):
     """
@@ -86,9 +86,21 @@ with col1:
     
     # Initialize session state for coordinates (using first row from Corrected_Input_Data.csv)
     if 'lat' not in st.session_state:
-        st.session_state.lat = 32.82426656  # First row latitude
+        try:
+            if orig_points is not None and not orig_points.empty:
+                st.session_state.lat = float(orig_points.iloc[0]['Latitude'])
+            else:
+                st.session_state.lat = 32.82426656
+        except Exception:
+            st.session_state.lat = 32.82426656
     if 'lon' not in st.session_state:
-        st.session_state.lon = -117.23500108  # First row longitude
+        try:
+            if orig_points is not None and not orig_points.empty:
+                st.session_state.lon = float(orig_points.iloc[0]['Longitude'])
+            else:
+                st.session_state.lon = -117.23500108
+        except Exception:
+            st.session_state.lon = -117.23500108
     
     # Input method selection
     input_method = st.radio(
@@ -101,7 +113,7 @@ with col1:
         # Search location input
         location_name = st.text_input("Enter location name:", placeholder="e.g., Mount Rainier, Washington")
         
-        if st.button("🔍 Search", key="search_location"):
+        if st.button("Search", key="search_location"):
             if location_name:
                 with st.spinner("Searching for location..."):
                     lat, lon, display_name = geocode_location(location_name)
@@ -109,7 +121,7 @@ with col1:
                         st.session_state.lat = lat
                         st.session_state.lon = lon
                         st.session_state.last_searched_location = display_name
-                        st.success(f"📍 Found: {display_name}")
+                        st.success(f"Found: {display_name}")
                         st.rerun()
                     else:
                         st.error("Location not found. Please try a different search term.")
@@ -140,14 +152,14 @@ with col1:
                 format="%.6f"
             )
         
-        if st.button("📍 Set Location", key="set_location_manual"):
+        if st.button("Set Location", key="set_location_manual"):
             st.session_state.lat = lat_input
             st.session_state.lon = lon_input
-            st.success(f"📍 Location set to: {lat_input:.6f}, {lon_input:.6f}")
+            st.success(f"Location set to: {lat_input:.6f}, {lon_input:.6f}")
             st.rerun()
     
     # Display current coordinates with better formatting
-    st.markdown("### 📍 Current Location")
+    st.markdown("### Current Location")
     col_coord1, col_coord2 = st.columns([1, 1])
     with col_coord1:
         st.metric("Latitude", f"{st.session_state.lat:.6f}")
@@ -156,20 +168,20 @@ with col1:
     
     # Add a quick location info display
     if hasattr(st.session_state, 'last_searched_location'):
-        st.info(f"📍 Last searched: {st.session_state.last_searched_location}")
+        st.info(f"Last searched: {st.session_state.last_searched_location}")
     
     # Event date input
     date = st.date_input("Event Date", value=datetime(2025, 1, 15))
     
     # Compute button
-    run = st.button("🚀 Compute Prediction", type="primary")
+    run = st.button("Compute Prediction", type="primary")
 
     # Map interface - different for each input method
     st.subheader("Map View")
 
     if input_method == "🔍 Search Location":
         # Simple visualization map for search results
-        st.info("🗺️ **Map showing your searched location and historical data points.**")
+        st.info("Map showing your searched location and historical data points.")
         
         # Create map data
         map_data = pd.DataFrame({
@@ -186,7 +198,7 @@ with col1:
 
     elif input_method == "⌨️ Manual Entry":
         # Simple visualization map for manual entry
-        st.info("🗺️ **Map showing your manually entered coordinates and historical data points.**")
+        st.info("Map showing your manually entered coordinates and historical data points.")
         
         # Create map data
         map_data = pd.DataFrame({
@@ -203,7 +215,7 @@ with col1:
 
     elif input_method == "📍 Click on Map":
         # Use Folium + streamlit-folium for true click-to-select
-        st.info("🗺️ Click anywhere on the map to select a location.")
+        st.info("Click anywhere on the map to select a location.")
 
         # Local import to avoid linter missing-import warning when not installed in dev env
         try:
@@ -241,7 +253,7 @@ with col1:
 
         cols_reload = st.columns([1, 3])
         with cols_reload[0]:
-            if st.button("🔁 Reload map", key="reload_folium"):
+            if st.button("Reload map", key="reload_folium"):
                 st.session_state.folium_key += 1
                 st.rerun()
 
@@ -252,7 +264,7 @@ with col1:
             if lat is not None and lon is not None:
                 st.session_state.lat = float(lat)
                 st.session_state.lon = float(lon)
-                st.success(f"📍 Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
+                st.success(f"Selected: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
                 st.rerun()
 
 with col2:
@@ -273,7 +285,7 @@ with col2:
             from feature_service import FeatureService
             
             # Initialize the feature service
-            status_text.text("🔧 Initializing feature service...")
+            status_text.text("Initializing feature service...")
             progress_bar.progress(10)
             feature_service = FeatureService()
             
@@ -286,12 +298,12 @@ with col2:
                     'CMIP6 CESM2': 85
                 }
                 progress_bar.progress(stage_progress.get(stage, 90))
-                status_text.text(f"🔄 {stage}: {message}")
+                status_text.text(f"{stage}: {message}")
                 if data:
                     stage_details.json(data)
             
             # Get features for the selected location and date
-            status_text.text("📊 Computing features...")
+            status_text.text("Computing features...")
             features = feature_service.compute_features(
                 float(st.session_state.lat),
                 float(st.session_state.lon),
@@ -300,20 +312,20 @@ with col2:
             )
             
             # Make prediction
-            status_text.text("🤖 Making prediction...")
+            status_text.text("Making prediction...")
             progress_bar.progress(95)
             prediction = feature_service.predict(features)
             
             # Complete
             progress_bar.progress(100)
-            status_text.text("✅ Prediction completed!")
+            status_text.text("Prediction completed.")
             stage_details.empty()
             
             with results_container:
-                st.success("✅ Analysis Complete!")
+                st.success("Analysis Complete")
                 
                 # Show prediction with enhanced styling
-                st.subheader("🎯 Prediction Results")
+                st.subheader("Prediction Results")
                 col_pred1, col_pred2, col_pred3 = st.columns([1, 1, 1])
                 
                 with col_pred1:
@@ -321,7 +333,7 @@ with col2:
                     st.metric("Stability Score", f"{stability_score:.4f}")
                 
                 with col_pred2:
-                    risk_level = "🔴 High Risk" if stability_score < 0.3 else "🟡 Medium Risk" if stability_score < 0.7 else "🟢 Low Risk"
+                    risk_level = "High Risk" if stability_score < 0.3 else "Medium Risk" if stability_score < 0.7 else "Low Risk"
                     st.metric("Risk Assessment", risk_level)
                 
                 with col_pred3:
@@ -329,7 +341,7 @@ with col2:
                     st.metric("Prediction Confidence", confidence)
                 
                 # Enhanced feature display
-                st.subheader("📊 Computed Features")
+                st.subheader("Computed Features")
                 
                 # Filter out metadata
                 display_features = {k: v for k, v in features.items() if not k.startswith('_')}
@@ -357,12 +369,12 @@ with col2:
                 # Display features by category
                 categories = feature_df['Category'].unique()
                 for category in sorted(categories):
-                    with st.expander(f"📋 {category} Features", expanded=True):
+                    with st.expander(f"{category} Features", expanded=True):
                         cat_features = feature_df[feature_df['Category'] == category][['Feature', 'Value', 'Unit']]
                         st.dataframe(cat_features, use_container_width=True, hide_index=True)
                 
                 # SHAP Values Analysis
-                st.subheader("🔍 Feature Importance (SHAP Analysis)")
+                st.subheader("Feature Importance (SHAP Analysis)")
 
                 try:
                     # Prepare feature vector for SHAP
@@ -387,21 +399,21 @@ with col2:
                     col_shap1, col_shap2 = st.columns([1, 1])
 
                     with col_shap1:
-                        st.markdown("**SHAP Feature Contributions:**")
+                        st.markdown("SHAP Feature Contributions")
                         shap_rows = []
                         for i, feature in enumerate(REQUIRED_FEATURES):
                             val = float(contribs[i]) if i < len(contribs) else 0.0
                             shap_rows.append({
                                 'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
-                                'Impact': ("🔴 Increases Risk" if val > 0 else ("🟢 Decreases Risk" if val < 0 else "⚪ Neutral")),
+                                'Impact': ("Increases Risk" if val > 0 else ("Decreases Risk" if val < 0 else "Neutral")),
                                 'abs_value': abs(val)
                             })
                         shap_df = pd.DataFrame(shap_rows).sort_values(by='abs_value', ascending=False)
                         st.dataframe(shap_df[['Feature','SHAP Value','Impact']], use_container_width=True, hide_index=True)
 
                     with col_shap2:
-                        st.markdown("**SHAP Waterfall Plot:**")
+                        st.markdown("SHAP Waterfall Plot")
                         try:
                             fig = plt.figure(figsize=(10, 8))
                             shap.plots.waterfall(exp, show=False)
@@ -413,7 +425,7 @@ with col2:
 
                 except Exception as e:
                     st.warning(f"SHAP analysis failed: {e}")
-                    st.markdown("**Feature Values (Fallback Display):**")
+                    st.markdown("Feature Values (Fallback Display)")
                     fallback_rows = []
                     for feature_name, value in display_features.items():
                         fallback_rows.append({
@@ -468,7 +480,7 @@ with col2:
                             "and any geomorphological cues that would matter for stability."
                         )
 
-                        st.subheader("🧠 AI Slope & Soil Summary")
+                        st.subheader("AI Slope & Soil Summary")
                         with st.spinner("Generating AI summary..."):
                             resp = client.chat.completions.create(
                                 model="gpt-4o",
@@ -490,9 +502,9 @@ with col2:
             progress_bar.empty()
             status_text.empty()
             stage_details.empty()
-            st.error(f"❌ Prediction failed: {e}")
+            st.error(f"Prediction failed: {e}")
             st.exception(e)
     else:
-        st.info("👆 Click 'Compute Prediction' to analyze the selected location.")
+        st.info("Click 'Compute Prediction' to analyze the selected location.")
 
  

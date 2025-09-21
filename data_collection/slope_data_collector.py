@@ -548,8 +548,15 @@ class SlopeDataCollector:
             except Exception:
                 img = Image.open(str(dem_file))
                 dem = np.array(img)
-                px_size = 10.0
-                gt = (lon - (dem.shape[1] * px_size)/2.0, px_size, 0, lat + (dem.shape[0] * px_size)/2.0, 0, -px_size)
+                # Approximate degrees-per-pixel from ~10 m resolution at latitude
+                px_m = 10.0
+                deg_per_m_lat = 1.0 / 110540.0
+                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
+                xres = px_m * deg_per_m_lon
+                yres = -px_m * deg_per_m_lat
+                minx = lon - (dem.shape[1] * xres) / 2.0
+                maxy = lat - (dem.shape[0] * yres) / 2.0  # yres is negative
+                gt = (minx, xres, 0.0, maxy, 0.0, yres)
 
             h, w = dem.shape
 
@@ -571,10 +578,14 @@ class SlopeDataCollector:
                 slope_c = slope_c[::stride, ::stride]
                 size_y, size_x = dem_c.shape
 
-            extent_m = half_side_m
-            x_lin = np.linspace(-extent_m, extent_m, size_x)
-            y_lin = np.linspace(-extent_m, extent_m, size_y)
-            X, Y = np.meshgrid(x_lin, y_lin)
+            # Build latitude/longitude grids corresponding to cropped/downsampled pixels
+            xmin, xmax = xs.start, xs.stop
+            ymin, ymax = ys.start, ys.stop
+            x_idx = np.arange(xmin, xmax, stride)
+            y_idx = np.arange(ymin, ymax, stride)
+            lon_vals = gt[0] + x_idx * gt[1]
+            lat_vals = gt[3] + y_idx * gt[5]
+            X, Y = np.meshgrid(lon_vals, lat_vals)
 
             # Resolution label detection (approximate)
             try:
@@ -596,9 +607,9 @@ class SlopeDataCollector:
 
             # Build Plotly figure
             surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
-            marker = go.Scatter3d(x=[0], y=[0], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
+            marker = go.Scatter3d(x=[lon], y=[lat], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
             fig = go.Figure(data=[surface, marker])
-            fig.update_scenes(xaxis_title='m East/West', yaxis_title='m North/South', zaxis_title='Elevation (m)')
+            fig.update_scenes(xaxis_title='Longitude (°)', yaxis_title='Latitude (°)', zaxis_title='Elevation (m)')
             fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
             return fig, res_label
         finally:
