@@ -170,8 +170,18 @@ with col1:
     if hasattr(st.session_state, 'last_searched_location'):
         st.info(f"Last searched: {st.session_state.last_searched_location}")
     
-    # Event date input
-    date = st.date_input("Event Date", value=datetime(2025, 1, 15))
+    # Event date input (default to first row of Corrected_Input_Data.csv)
+    try:
+        data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'Corrected_Input_Data.csv')
+        if 'default_event_date' not in st.session_state:
+            if os.path.exists(data_path):
+                _df0 = pd.read_csv(data_path, nrows=1)
+                st.session_state.default_event_date = pd.to_datetime(_df0['event_date'].iloc[0]).date()
+            else:
+                st.session_state.default_event_date = datetime(2025, 1, 15).date()
+    except Exception:
+        st.session_state.default_event_date = datetime(2025, 1, 15).date()
+    date = st.date_input("Event Date", value=st.session_state.default_event_date)
     
     # Compute button
     run = st.button("Compute Prediction", type="primary")
@@ -308,7 +318,8 @@ with col2:
                 float(st.session_state.lat),
                 float(st.session_state.lon),
                 datetime.combine(date, datetime.min.time()) if hasattr(date, 'year') else date,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                strict_from_csv=True
             )
             
             # Make prediction
