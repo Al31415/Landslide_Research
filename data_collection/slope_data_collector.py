@@ -25,6 +25,7 @@ import shapefile
 from osgeo import gdal
 from shapely.geometry import Point, Polygon
 from PIL import Image
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 
 class SlopeDataCollector:
@@ -425,6 +426,78 @@ class SlopeDataCollector:
             print(f"Slope plot saved to {plot_file}")
         
         plt.show()
+
+    def plot_terrain_3d(self, lat: float, lon: float, 
+                        output_dir: str = "temp_dem", 
+                        half_side_m: int = 200, 
+                        save_plots: bool = False):
+        """
+        Build a 3D topographic visualization using DEM elevation as surface (Z)
+        and slope (degrees) as face color. A red point marks the target location.
+
+        Returns a matplotlib Figure for embedding (e.g., in Streamlit).
+        """
+        Path(output_dir).mkdir(exist_ok=True)
+
+        # Download DEM data around the point (use a generous window to avoid edge issues)
+        region = self._offset(lat, lon, metres=max(10_000, half_side_m * 10))
+        dem_file = Path(output_dir) / f"dem_3d_{lat:.5f}_{lon:.5f}.tif"
+        if not self._download_elevation_data(region, str(dem_file)):
+            raise RuntimeError(f"Failed to download DEM for 3D plot at ({lat}, {lon})")
+
+        try:
+            # Load raw DEM and attributes
+            ds = gdal.Open(str(dem_file))
+            dem = ds.ReadAsArray()
+            gt = ds.GetGeoTransform()
+            h, w = dem.shape
+
+            # Compute slope on full DEM, then crop consistent windows
+            attrs = self._load_dem_and_attributes(str(dem_file))
+            slope = attrs['slope_degrees']
+
+            # Crop to window around the clicked point
+            ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
+            dem_c = dem[ys, xs]
+            slope_c = slope[ys, xs]
+
+            # Create X, Y grids in meters for visualization extents
+            size_y, size_x = dem_c.shape
+            extent_m = half_side_m
+            x_lin = np.linspace(-extent_m, extent_m, size_x)
+            y_lin = np.linspace(-extent_m, extent_m, size_y)
+            X, Y = np.meshgrid(x_lin, y_lin)
+
+            # Normalize slope for colormap
+            slope_norm = (slope_c - np.nanmin(slope_c)) / (np.nanmax(slope_c) - np.nanmin(slope_c) + 1e-9)
+            cmap = plt.get_cmap('plasma')
+            face_colors = cmap(slope_norm)
+
+            # Center elevation for the red marker
+            px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
+            # Clamp to cropped region center (0,0)
+            center_z = float(dem[int(py_c), int(px_c)]) if (0 <= px_c < w and 0 <= py_c < h) else float(np.nanmean(dem_c))
+
+            # Build figure
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            ax.plot_surface(X, Y, dem_c, facecolors=face_colors, rstride=1, cstride=1, linewidth=0, antialiased=False)
+            ax.scatter([0], [0], [center_z], c='red', s=50, depthshade=False)
+            ax.set_xlabel('m East/West')
+            ax.set_ylabel('m North/South')
+            ax.set_zlabel('Elevation (m)')
+            ax.set_title(f"3D Topography (colored by slope) – lat {lat:.5f}, lon {lon:.5f}")
+
+            if save_plots:
+                out_png = Path(output_dir) / f"topography_3d_{lat:.5f}_{lon:.5f}.png"
+                fig.savefig(out_png, dpi=200, bbox_inches='tight')
+
+            return fig
+        finally:
+            if 'ds' in locals() and ds is not None:
+                ds = None
+            if dem_file.exists():
+                dem_file.unlink()
 
     def _crop_window(self, gt: Tuple, width: int, height: int, 
                     lat: float, lon: float, half_side_m: int = 200) -> Tuple[slice, slice]:

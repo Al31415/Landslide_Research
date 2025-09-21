@@ -358,13 +358,13 @@ with col2:
                             contribs = values_array[0, :, class_idx]
                         elif values_array.ndim == 2:
                             contribs = values_array[0, :]
-                        else:
+            else:
                             contribs = values_array.ravel()
 
                         for i, feature in enumerate(REQUIRED_FEATURES):
                             val = float(contribs[i]) if i < len(contribs) else 0.0
                             shap_data.append({
-                                'Feature': feature,
+                    'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
                                 'Impact': "🔴 Increases Risk" if val > 0 else "🟢 Decreases Risk" if val < 0 else "⚪ Neutral",
                                 'abs_value': abs(val)
@@ -389,7 +389,7 @@ with col2:
                             
                             fig = plt.figure(figsize=(10, 8))
                             shap.plots.waterfall(exp, show=False)
-                            st.pyplot(fig)
+                    st.pyplot(fig)
                             plt.close(fig)
                         except Exception as waterfall_error:
                             st.warning(f"Waterfall plot failed: {waterfall_error}")
@@ -409,6 +409,21 @@ with col2:
                     
                     importance_df = pd.DataFrame(importance_data)
                     st.dataframe(importance_df, use_container_width=True, hide_index=True)
+
+                # 3D Topographic Visualization
+                st.subheader("🗺️ 3D Topographic Visualization (Slope-colored)")
+                try:
+                    from slope_data_collector import SlopeDataCollector
+                    collector = SlopeDataCollector()
+                    fig3d = collector.plot_terrain_3d(
+                        lat=float(st.session_state.lat),
+                        lon=float(st.session_state.lon),
+                        half_side_m=200,
+                        save_plots=False
+                    )
+                    st.pyplot(fig3d)
+                except Exception as topo_err:
+                    st.warning(f"3D visualization failed: {topo_err}")
 
         except Exception as e:
             progress_bar.empty()
