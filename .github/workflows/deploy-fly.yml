@@ -28,12 +28,19 @@ jobs:
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Wait 5 minutes for image availability
+        run: sleep 300
+
       - name: Set Fly.io secrets (OPENAI_API_KEY)
-        if: ${{ secrets.OPENAI_API_KEY != '' }}
         run: |
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" | flyctl secrets import --app stability-predictor
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY=$OPENAI_API_KEY" | flyctl secrets import --app stability-predictor
+          else
+            echo "OPENAI_API_KEY not set, skipping import."
+          fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         
       - name: Deploy to Fly.io using pre-built image
         run: flyctl deploy --image ghcr.io/al31415/landslide_research:latest --app stability-predictor
