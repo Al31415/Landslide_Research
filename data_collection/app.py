@@ -407,12 +407,13 @@ with col2:
                 try:
                     from slope_data_collector import SlopeDataCollector
                     collector = SlopeDataCollector()
-                    fig3d = collector.plot_terrain_3d(
-                        lat=float(st.session_state.lat),
-                        lon=float(st.session_state.lon),
-                        half_side_m=200,
-                        save_plots=False
-                    )
+                    with st.spinner("Rendering 3D topography..."):
+                        fig3d = collector.plot_terrain_3d(
+                            lat=float(st.session_state.lat),
+                            lon=float(st.session_state.lon),
+                            half_side_m=200,
+                            save_plots=False
+                        )
                     st.pyplot(fig3d)
                 except Exception as topo_err:
                     st.warning(f"3D visualization failed: {topo_err}")

@@ -427,9 +427,9 @@ class SlopeDataCollector:
         
         plt.show()
 
-    def plot_terrain_3d(self, lat: float, lon: float, 
-                        output_dir: str = "temp_dem", 
-                        half_side_m: int = 200, 
+    def plot_terrain_3d(self, lat: float, lon: float,
+                        output_dir: str = "temp_dem",
+                        half_side_m: int = 200,
                         save_plots: bool = False):
         """
         Build a 3D topographic visualization using DEM elevation as surface (Z)
@@ -439,17 +439,28 @@ class SlopeDataCollector:
         """
         Path(output_dir).mkdir(exist_ok=True)
 
-        # Download DEM data around the point (use a generous window to avoid edge issues)
-        region = self._offset(lat, lon, metres=max(10_000, half_side_m * 10))
+        # Download DEM data around the point (small window for performance)
+        region = self._offset(lat, lon, metres=max(2_000, half_side_m * 4))
         dem_file = Path(output_dir) / f"dem_3d_{lat:.5f}_{lon:.5f}.tif"
         if not self._download_elevation_data(region, str(dem_file)):
             raise RuntimeError(f"Failed to download DEM for 3D plot at ({lat}, {lon})")
 
         try:
             # Load raw DEM and attributes
-            ds = gdal.Open(str(dem_file))
-            dem = ds.ReadAsArray()
-            gt = ds.GetGeoTransform()
+            # Try GDAL read; fallback to PIL if needed
+            dem = None
+            ds = None
+            try:
+                ds = gdal.Open(str(dem_file))
+                dem = ds.ReadAsArray()
+                gt = ds.GetGeoTransform()
+            except Exception:
+                img = Image.open(str(dem_file))
+                dem = np.array(img)
+                # Construct a best-effort GeoTransform centered at point with pixel size ~10m
+                # This is only used to compute a crop window around the center
+                px_size = 10.0
+                gt = (lon - (dem.shape[1] * px_size)/2.0, px_size, 0, lat + (dem.shape[0] * px_size)/2.0, 0, -px_size)
             h, w = dem.shape
 
             # Compute slope on full DEM, then crop consistent windows
@@ -460,6 +471,14 @@ class SlopeDataCollector:
             ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
             dem_c = dem[ys, xs]
             slope_c = slope[ys, xs]
+
+            # Downsample to keep mesh reasonable (<= 150 x 150)
+            size_y, size_x = dem_c.shape
+            target = 150
+            stride = int(max(1, np.ceil(max(size_x, size_y) / target)))
+            if stride > 1:
+                dem_c = dem_c[::stride, ::stride]
+                slope_c = slope_c[::stride, ::stride]
 
             # Create X, Y grids in meters for visualization extents
             size_y, size_x = dem_c.shape
@@ -476,7 +495,10 @@ class SlopeDataCollector:
             # Center elevation for the red marker
             px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
             # Clamp to cropped region center (0,0)
-            center_z = float(dem[int(py_c), int(px_c)]) if (0 <= px_c < w and 0 <= py_c < h) else float(np.nanmean(dem_c))
+            if 0 <= px_c < w and 0 <= py_c < h:
+                center_z = float(dem[int(py_c), int(px_c)])
+            else:
+                center_z = float(np.nanmean(dem_c))
 
             # Build figure
             fig = plt.figure(figsize=(10, 8))
