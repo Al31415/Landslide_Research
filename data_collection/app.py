@@ -397,6 +397,8 @@ with col2:
                     shap_values = explainer(X)
 
                     values_array = np.asarray(shap_values.values)
+                    if values_array.size == 0:
+                        raise ValueError("Empty SHAP values returned")
                     if values_array.ndim == 3 and values_array.shape[2] > 1:
                         contribs = values_array[0, :, 1]
                         exp = shap_values[:, :, 1][0]
@@ -412,8 +414,11 @@ with col2:
                     with col_shap1:
                         st.markdown("SHAP Feature Contributions")
                         shap_rows = []
-                        for i, feature in enumerate(REQUIRED_FEATURES):
-                            val = float(contribs[i]) if i < len(contribs) else 0.0
+                        # Pad/truncate to avoid index errors
+                        max_len = min(len(REQUIRED_FEATURES), len(contribs))
+                        for i in range(max_len):
+                            feature = REQUIRED_FEATURES[i]
+                            val = float(contribs[i])
                             shap_rows.append({
                                 'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
@@ -519,3 +524,4 @@ with col2:
         st.info("Click 'Compute Prediction' to analyze the selected location.")
 
  
+
