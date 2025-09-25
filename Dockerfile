@@ -29,7 +29,8 @@ RUN pip install --no-cache-dir numpy>=1.26.0 scipy>=1.11.0
 # Install GDAL
 RUN pip install --no-cache-dir GDAL==$(gdal-config --version)
 
-# Skip richdem installation - will use fallback slope calculation
+# Install rasterio and richdem (with C deps already present)
+RUN pip install --no-cache-dir rasterio==1.3.9 richdem==0.3.4
 
 # Install other dependencies
 RUN pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 && \
