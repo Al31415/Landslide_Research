@@ -2,24 +2,18 @@ name: Deploy to Fly.io
 
 on:
   push:
-    branches: [ deploy-app ]
+    branches:
+      - deploy-app
   workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Build and deploy
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl deploy --remote-only --build-arg BUILDKIT_INLINE_CACHE=1
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
 name: Deploy to Fly.io
 
 on:
@@ -42,41 +36,21 @@ jobs:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
     environment: production
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+      
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Wait 5 minutes for image availability
-        run: sleep 300
-
-      - name: Set Fly.io secrets (OPENAI_API_KEY)
+      
+      - name: Deploy with Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          if [ -n "$OPENAI_API_KEY" ]; then
-            echo "OPENAI_API_KEY=$OPENAI_API_KEY" | flyctl secrets import --app stability-predictor
-          else
-            echo "OPENAI_API_KEY not set, skipping import."
-          fi
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        
-      - name: Deploy to Fly.io using pre-built image
-        run: flyctl deploy --image ghcr.io/al31415/landslide_research:latest --app stability-predictor
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          
+          flyctl deploy --remote-only --build-arg BUILDKIT_INLINE_CACHE=1
+      
       - name: Health Check
         run: |
           echo "Waiting for deployment to be ready..."
           sleep 30
-          curl -f https://stability-predictor.fly.dev/health || echo "Health check failed, but deployment may still be starting"
-          
-      - name: Deployment Summary
-        run: |
-          echo "🚀 Deployment completed!"
-          echo "📱 App URL: https://stability-predictor.fly.dev"
-          echo "📊 Fly.io Dashboard: https://fly.io/apps/stability-predictor" 
+          curl -f https://stability-predictor.fly.dev/_stcore/health || echo "Health check failed; app may still be starting"
