@@ -330,15 +330,11 @@ class SlopeDataCollector:
                     ds = None
                 except Exception:
                     pass
-                if dem_file.exists():
-                    dem_file.unlink()
-
                 return features
 
             except Exception as e:
                 last_error = e
-                if dem_file.exists():
-                    dem_file.unlink()
+                # Preserve DEM file for potential reuse by 3D renderer
                 continue
 
         # As a final fallback, return neutral/default terrain values instead of failing
@@ -595,99 +591,125 @@ class SlopeDataCollector:
                               half_side_m: int = 200) -> Tuple[go.Figure, str]:
         """
         Build an interactive 3D topographic Plotly figure (pan/zoom/rotate).
+        If a flat/invalid DEM is encountered, retry with larger regions before failing.
+        Reuses any DEM previously downloaded for the slope feature.
         Returns (figure, resolution_label).
         """
         Path(output_dir).mkdir(exist_ok=True)
 
-        # Prefer ~10 m if possible by requesting a compact window
-        region = self._offset(lat, lon, metres=max(2_000, half_side_m * 4))
-        dem_file = Path(output_dir) / f"dem_3d_plotly_{lat:.5f}_{lon:.5f}.tif"
-        if not self._download_elevation_data(region, str(dem_file)):
-            raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
+        region_sizes_m = [max(2_000, half_side_m * 4), 10_000, 50_000]
+        last_error: Optional[Exception] = None
 
-        try:
-            # Read DEM (GDAL preferred)
-            dem = None
+        # Reuse existing DEMs from slope lookups first
+        candidate_paths: List[Path] = list(Path(output_dir).glob(f"dem_{lat:.5f}_{lon:.5f}_*.tif"))
+        # Then planned 3D-specific downloads
+        for metres in region_sizes_m:
+            candidate_paths.append(Path(output_dir) / f"dem_3d_plotly_{lat:.5f}_{lon:.5f}_{metres}.tif")
+
+        for path in candidate_paths:
+            if not path.exists():
+                # Only download for the 3D-specific planned paths
+                if path.name.startswith("dem_3d_plotly_"):
+                    try:
+                        metres = int(path.stem.split("_")[-1])
+                    except Exception:
+                        metres = max(2_000, half_side_m * 4)
+                    region = self._offset(lat, lon, metres=metres)
+                    if not self._download_elevation_data(region, str(path)):
+                        last_error = RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon}) window {metres} m")
+                        continue
+                else:
+                    continue
+
+            # Try to render using this DEM path
             ds = None
             try:
-                if GDAL_AVAILABLE:
-                    ds = gdal.Open(str(dem_file))
-                    dem = ds.ReadAsArray()
-                    gt = ds.GetGeoTransform()
-                else:
-                    raise RuntimeError("GDAL not available")
-            except Exception:
-                img = Image.open(str(dem_file))
-                dem = np.array(img)
-                # Approximate degrees-per-pixel from ~10 m resolution at latitude
-                px_m = 10.0
-                deg_per_m_lat = 1.0 / 110540.0
-                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
-                xres = px_m * deg_per_m_lon
-                yres = -px_m * deg_per_m_lat
-                minx = lon - (dem.shape[1] * xres) / 2.0
-                maxy = lat - (dem.shape[0] * yres) / 2.0  # yres is negative
-                gt = (minx, xres, 0.0, maxy, 0.0, yres)
+                # Read DEM (GDAL preferred)
+                try:
+                    if GDAL_AVAILABLE:
+                        ds = gdal.Open(str(path))
+                        dem = ds.ReadAsArray()
+                        gt = ds.GetGeoTransform()
+                    else:
+                        raise RuntimeError("GDAL not available")
+                except Exception:
+                    img = Image.open(str(path))
+                    dem = np.array(img)
+                    # Approximate degrees-per-pixel from ~10 m resolution at latitude
+                    px_m = 10.0
+                    deg_per_m_lat = 1.0 / 110540.0
+                    deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
+                    xres = px_m * deg_per_m_lon
+                    yres = -px_m * deg_per_m_lat
+                    minx = lon - (dem.shape[1] * xres) / 2.0
+                    maxy = lat - (dem.shape[0] * yres) / 2.0  # yres is negative
+                    gt = (minx, xres, 0.0, maxy, 0.0, yres)
 
-            h, w = dem.shape
+                h, w = dem.shape
 
-            # Terrain attributes (slope for coloring)
-            attrs = self._load_dem_and_attributes(str(dem_file))
-            slope = attrs['slope_degrees']
+                # Terrain attributes (slope for coloring)
+                attrs = self._load_dem_and_attributes(str(path))
+                slope = attrs['slope_degrees']
 
-            # Crop window
-            ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
-            dem_c = dem[ys, xs]
-            slope_c = slope[ys, xs]
+                # Crop window
+                ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
+                dem_c = dem[ys, xs]
+                slope_c = slope[ys, xs]
 
-            # Downsample for performance
-            size_y, size_x = dem_c.shape
-            target = 200
-            stride = int(max(1, np.ceil(max(size_x, size_y) / target)))
-            if stride > 1:
-                dem_c = dem_c[::stride, ::stride]
-                slope_c = slope_c[::stride, ::stride]
+                # Downsample for performance
                 size_y, size_x = dem_c.shape
+                target = 200
+                stride = int(max(1, np.ceil(max(size_x, size_y) / target)))
+                if stride > 1:
+                    dem_c = dem_c[::stride, ::stride]
+                    slope_c = slope_c[::stride, ::stride]
+                    size_y, size_x = dem_c.shape
 
-            # Build latitude/longitude grids corresponding to cropped/downsampled pixels
-            xmin, xmax = xs.start, xs.stop
-            ymin, ymax = ys.start, ys.stop
-            x_idx = np.arange(xmin, xmax, stride)
-            y_idx = np.arange(ymin, ymax, stride)
-            lon_vals = gt[0] + x_idx * gt[1]
-            lat_vals = gt[3] + y_idx * gt[5]
-            X, Y = np.meshgrid(lon_vals, lat_vals)
+                # If DEM appears flat/invalid, try next candidate
+                if (not np.isfinite(dem_c).any()) or ((np.nanmax(dem_c) - np.nanmin(dem_c)) < 1e-3) or (np.nanstd(dem_c) < 1e-3):
+                    last_error = ValueError("DEM window appears flat or invalid")
+                    continue
 
-            # Resolution label detection (approximate)
-            try:
-                m_per_deg_lat = 110540.0
-                m_per_deg_lon = 111320.0 * math.cos(math.radians(lat))
-                px_lat_m = abs(gt[5]) * m_per_deg_lat if ds is not None else 10.0
-                px_lon_m = abs(gt[1]) * m_per_deg_lon if ds is not None else 10.0
-                px_m = (px_lat_m + px_lon_m) / 2.0
-                res_label = "10 m (1/3 arc-second)" if px_m <= 15.0 else "30 m (1 arc-second)"
-            except Exception:
-                res_label = "Unknown resolution"
+                # Build latitude/longitude grids corresponding to cropped/downsampled pixels
+                xmin, xmax = xs.start, xs.stop
+                ymin, ymax = ys.start, ys.stop
+                x_idx = np.arange(xmin, xmax, stride)
+                y_idx = np.arange(ymin, ymax, stride)
+                lon_vals = gt[0] + x_idx * gt[1]
+                lat_vals = gt[3] + y_idx * gt[5]
+                X, Y = np.meshgrid(lon_vals, lat_vals)
 
-            # Center point elevation
-            px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
-            if 0 <= px_c < w and 0 <= py_c < h:
-                center_z = float(dem[int(py_c), int(px_c)])
-            else:
-                center_z = float(np.nanmean(dem_c))
+                # Resolution label detection (approximate)
+                try:
+                    m_per_deg_lat = 110540.0
+                    m_per_deg_lon = 111320.0 * math.cos(math.radians(lat))
+                    px_lat_m = abs(gt[5]) * m_per_deg_lat if ds is not None else 10.0
+                    px_lon_m = abs(gt[1]) * m_per_deg_lon if ds is not None else 10.0
+                    px_m = (px_lat_m + px_lon_m) / 2.0
+                    res_label = "10 m (1/3 arc-second)" if px_m <= 15.0 else "30 m (1 arc-second)"
+                except Exception:
+                    res_label = "Unknown resolution"
 
-            # Build Plotly figure
-            surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
-            marker = go.Scatter3d(x=[lon], y=[lat], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
-            fig = go.Figure(data=[surface, marker])
-            fig.update_scenes(xaxis_title='Longitude (°)', yaxis_title='Latitude (°)', zaxis_title='Elevation (m)')
-            fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
-            return fig, res_label
-        finally:
-            if 'ds' in locals() and ds is not None:
-                ds = None
-            if dem_file.exists():
-                dem_file.unlink()
+                # Center point elevation
+                px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
+                if 0 <= px_c < w and 0 <= py_c < h:
+                    center_z = float(dem[int(py_c), int(px_c)])
+                else:
+                    center_z = float(np.nanmean(dem_c))
+
+                # Build Plotly figure
+                surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
+                marker = go.Scatter3d(x=[lon], y=[lat], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
+                fig = go.Figure(data=[surface, marker])
+                fig.update_scenes(xaxis_title='Longitude (°)', yaxis_title='Latitude (°)', zaxis_title='Elevation (m)')
+                fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
+                return fig, res_label
+            finally:
+                if 'ds' in locals() and ds is not None:
+                    ds = None
+                # Keep DEM file on disk for reuse
+
+        raise RuntimeError(f"Failed to build interactive 3D: {last_error}")
 
     def _crop_window(self, gt: Tuple, width: int, height: int, 
                     lat: float, lon: float, half_side_m: int = 200) -> Tuple[slice, slice]:
