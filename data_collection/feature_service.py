@@ -57,58 +57,58 @@ REQUIRED_FEATURES = [
 ]
 
 class FeatureService:
-    def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
+	def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
                  model_path: str = str(Path(__file__).parent.parent / 'models' / 'best_model_RandomForest.joblib')):
-        self.data_dir = data_dir
-        self.model_path = model_path
-        self._load_model()
-        self.ssurgo = SSURGODataCollector()
-        self.usgs = SlopeDataCollector()
-        self.meteostat = MeteostatDataCollector()
-        self.cmip = CMIPDataCollector(self.data_dir)
-        self._rolling = None
-        # Optional CSV cache for strict validation mode
-        csv_path = Path(self.data_dir) / 'Corrected_Input_Data.csv'
-        try:
-            self._csv_df = pd.read_csv(csv_path) if csv_path.exists() else None
-        except Exception:
-            self._csv_df = None
+		self.data_dir = data_dir
+		self.model_path = model_path
+		self._load_model()
+		self.ssurgo = SSURGODataCollector()
+		self.usgs = SlopeDataCollector()
+		self.meteostat = MeteostatDataCollector()
+		self.cmip = CMIPDataCollector(self.data_dir)
+		self._rolling = None
+		# Optional CSV cache for strict validation mode
+		csv_path = Path(self.data_dir) / 'Corrected_Input_Data.csv'
+		try:
+			self._csv_df = pd.read_csv(csv_path) if csv_path.exists() else None
+		except Exception:
+			self._csv_df = None
 
-    def _load_model(self) -> None:
-        self.model = joblib.load(self.model_path)
+	def _load_model(self) -> None:
+		self.model = joblib.load(self.model_path)
 
-    def _ensure_cmip(self) -> None:
-        if self._rolling is None:
-            self._rolling = self.cmip.process_all_scenarios()
+	def _ensure_cmip(self) -> None:
+		if self._rolling is None:
+			self._rolling = self.cmip.process_all_scenarios()
 
-    @staticmethod
-    def _hzname_to_numeric(hzname_series: pd.Series) -> pd.Series:
-        s = hzname_series.fillna("").astype(str)
-        s = s.str.replace('[^A-Z]', '', regex=True)
-        s = s.str.replace('BE', '3.5', regex=False)
-        s = s.str.replace('BC', '4.5', regex=False)
-        s = s.str.replace('AC', '3.5', regex=False)
-        s = s.str.replace('EB', '3.5', regex=False)
-        s = s.str.replace('AB', '3', regex=False)
-        s = s.str.replace('AE', '2.5', regex=False)
-        s = s.str.replace('O', '1', regex=False)
-        s = s.str.replace('H', '1', regex=False)
-        s = s.str.replace('A', '2', regex=False)
-        s = s.str.replace('E', '3', regex=False)
-        s = s.str.replace('B', '4', regex=False)
-        s = s.str.replace('C', '5', regex=False)
-        return pd.to_numeric(s, errors='coerce')
+	@staticmethod
+	def _hzname_to_numeric(hzname_series: pd.Series) -> pd.Series:
+		s = hzname_series.fillna("").astype(str)
+		s = s.str.replace('[^A-Z]', '', regex=True)
+		s = s.str.replace('BE', '3.5', regex=False)
+		s = s.str.replace('BC', '4.5', regex=False)
+		s = s.str.replace('AC', '3.5', regex=False)
+		s = s.str.replace('EB', '3.5', regex=False)
+		s = s.str.replace('AB', '3', regex=False)
+		s = s.str.replace('AE', '2.5', regex=False)
+		s = s.str.replace('O', '1', regex=False)
+		s = s.str.replace('H', '1', regex=False)
+		s = s.str.replace('A', '2', regex=False)
+		s = s.str.replace('E', '3', regex=False)
+		s = s.str.replace('B', '4', regex=False)
+		s = s.str.replace('C', '5', regex=False)
+		return pd.to_numeric(s, errors='coerce')
 
-    def compute_features(self, lat: float, lon: float, event_date: datetime,
-                         progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
-                         strict_from_csv: bool = False) -> Dict[str, Any]:
-        features: Dict[str, Any] = {}
-        units: Dict[str, str] = {}
-        raw: Dict[str, Any] = {}
+	def compute_features(self, lat: float, lon: float, event_date: datetime,
+						 progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+						 strict_from_csv: bool = False) -> Dict[str, Any]:
+		features: Dict[str, Any] = {}
+		units: Dict[str, str] = {}
+		raw: Dict[str, Any] = {}
 
-        def report(stage: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
-            if progress_callback is not None:
-                progress_callback(stage, message, data or {})
+		def report(stage: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+			if progress_callback is not None:
+				progress_callback(stage, message, data or {})
 
 		# Optional strict CSV override for validation/playground parity
 		if strict_from_csv and self._csv_df is not None and len(self._csv_df) > 0:
@@ -123,24 +123,24 @@ class FeatureService:
 								features[k] = float(v)
 							except Exception:
 								features[k] = v
-					# Define units for known fields
-					units.update({
-						'Slope From USGS Elevation Data': 'degrees',
-						'Slope From SSURGO': 'degrees',
-						'max_1_day_prcp': 'mm',
-						'max_3_day_prcp': 'mm',
-						'max_7_day_prcp': 'mm',
-						'avg_30_day_prcp': 'mm/day',
-						'avg_60_day_prcp': 'mm/day',
-						'avg_90_day_prcp': 'mm/day',
-						'avg_90_day_prcp_mean_flux': 'kg m^-2 s^-1',
-						'avg_365_day_prcp_mean_flux': 'kg m^-2 s^-1',
-						'Bulk Density': 'g/cm³',
-						'Deepest Soil Horizon Layer': 'index',
-					})
-					features['_units'] = units
-					features['_raw'] = raw
-					return features
+						# Define units for known fields
+						units.update({
+							'Slope From USGS Elevation Data': 'degrees',
+							'Slope From SSURGO': 'degrees',
+							'max_1_day_prcp': 'mm',
+							'max_3_day_prcp': 'mm',
+							'max_7_day_prcp': 'mm',
+							'avg_30_day_prcp': 'mm/day',
+							'avg_60_day_prcp': 'mm/day',
+							'avg_90_day_prcp': 'mm/day',
+							'avg_90_day_prcp_mean_flux': 'kg m^-2 s^-1',
+							'avg_365_day_prcp_mean_flux': 'kg m^-2 s^-1',
+							'Bulk Density': 'g/cm³',
+							'Deepest Soil Horizon Layer': 'index',
+						})
+						features['_units'] = units
+						features['_raw'] = raw
+						return features
 			except Exception:
 				pass
 
@@ -154,9 +154,7 @@ class FeatureService:
 				primary = _sc.extract_primary_soil_properties(soil_df)
 				row0 = primary.iloc[0] if not primary.empty else {}
 				bulk_density = float(row0.get('bulk_density', 0.0)) if row0.get('bulk_density') is not None else 0.0
-				# slope_h was aliased to 'slope' in test2 selection
 				slope_from_ssurgo = float(row0.get('slope', 0.0)) if row0.get('slope') is not None else 0.0
-				# deepest horizon from all hzname entries
 				if 'hzname' in primary.columns and not primary['hzname'].dropna().empty:
 					deepest = float(_S._hzname_to_numeric(primary['hzname']).max())
 					if pd.isna(deepest):
@@ -171,7 +169,6 @@ class FeatureService:
 				features['Slope From SSURGO'] = 0.0
 				features['Deepest Soil Horizon Layer'] = 0.0
 		except Exception:
-			# fallback to previous aggregator
 			soil_features = self.ssurgo.get_soil_features_for_point(lat, lon)
 			features['Bulk Density'] = soil_features['bulk_density']
 			features['Slope From SSURGO'] = soil_features['slope_from_ssurgo']
@@ -190,7 +187,6 @@ class FeatureService:
 		deg = np.nan
 		try:
 			if _LEAFMAP_OK and _RICHDEM_OK and _RASTERIO_OK:
-				# small bbox to fetch the tile; any small size works to select the correct tile
 				import math as _m
 				R = 6_378_137.0
 				dn = 100; de = 100
@@ -201,7 +197,6 @@ class FeatureService:
 				if url:
 					fp = url[0]
 					local_fp = str(Path(self.data_dir) / Path(fp).name)
-					# Always (re)download to refresh cache in production
 					leafmap.download_file(fp, local_fp, overwrite=True)
 					from PIL import Image as _Image
 					im = _Image.open(local_fp)
@@ -212,7 +207,6 @@ class FeatureService:
 					dem_rd2 = _rd.rdarray(imarray, no_data=-9999.0)
 					_slope = _rd.TerrainAttribute(dem_rd2, attrib='slope_degrees')
 					deg = float(_slope[int(_r), int(_c)])
-			# If still NaN or download path not available, fallback to internal collector (last resort)
 			if pd.isna(deg):
 				report('USGS NED 10m', 'Fallback to internal NED collector', {})
 				terr = self.usgs.get_terrain_features_for_point(lat, lon)
@@ -260,7 +254,6 @@ class FeatureService:
 				'avg_30_day_prcp': 'mm/day', 'avg_60_day_prcp': 'mm/day', 'avg_90_day_prcp': 'mm/day', 'avg_365_day_prcp': 'mm/day'
 			})
 		except Exception:
-			# fallback to existing collector
 			pr = self.meteostat.get_precipitation_data_playground_logic(lat, lon, end)
 			for k, v in pr.items():
 				val = float(v) if v is not None and not pd.isna(v) else 0.0
@@ -296,30 +289,6 @@ class FeatureService:
 		features['_units'] = units
 		features['_raw'] = raw
 		return features
-
-	def _match_csv_row(self, lat: float, lon: float, event_date: datetime) -> Optional[pd.Series]:
-		if self._csv_df is None or self._csv_df.empty:
-			return None
-		df = self._csv_df.copy()
-		# Normalize date
-		df['event_date_norm'] = pd.to_datetime(df['event_date'], errors='coerce').dt.date
-		target_date = pd.to_datetime(event_date).date()
-		# Tolerant match on lat/lon
-		tol_lat = 1e-4
-		tol_lon = 1e-4
-		mask = (
-			(df['event_date_norm'] == target_date) &
-			(df['Latitude'].sub(lat).abs() <= tol_lat) &
-			(df['Longitude'].sub(lon).abs() <= tol_lon)
-		)
-		if not mask.any():
-			# Try nearest within small tolerance ignoring date (for debugging)
-			dlat = df['Latitude'].sub(lat).abs()
-			dlon = df['Longitude'].sub(lon).abs()
-			nearest_idx = (dlat + dlon).idxmin()
-			return df.iloc[nearest_idx]
-		row = df[mask].iloc[0]
-		return row
 
 	def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
 		X = pd.DataFrame([{k: features.get(k, np.nan) for k in REQUIRED_FEATURES}])
