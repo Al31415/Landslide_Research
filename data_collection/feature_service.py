@@ -57,8 +57,8 @@ REQUIRED_FEATURES = [
 ]
 
 class FeatureService:
-	def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
-	             model_path: str = str(Path(__file__).parent.parent / 'models' / 'best_model.joblib')):
+    def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
+                 model_path: str = str(Path(__file__).parent.parent / 'models' / 'best_model_RandomForest.joblib')):
 		self.data_dir = data_dir
 		self.model_path = model_path
 		self._load_model()
