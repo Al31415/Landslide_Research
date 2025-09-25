@@ -81,28 +81,57 @@ class SlopeDataCollector:
 
     def _download_elevation_data(self, region: List[float], out_path: str) -> bool:
         """
-        Download a single NED GeoTIFF for the bounding box.
-        
-        Args:
-            region: Bounding box [min_lon, min_lat, max_lon, max_lat]
-            out_path: Output file path
-            
-        Returns:
-            True if download successful, False otherwise
+        Download and mosaic NED GeoTIFF(s) for the bounding box.
         """
-        # Try TNM via leafmap URL → download
+        import os
+        from osgeo import gdal
+        
         try:
+            # Get list of URLs
             url_list = leafmap.download_ned(region, return_url=True)
-            if url_list and len(url_list) > 0 and isinstance(url_list[0], str):
-                headers = {
-                    'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'
-                }
-                r = requests.get(url_list[0], timeout=120, headers=headers)
-                r.raise_for_status()
-                Path(out_path).write_bytes(r.content)
-                return True
+            if not url_list:
+                warnings.warn("No NED tiles found for region")
+                return False
+            
+            # Download all tiles to temp dir
+            temp_dir = Path(out_path).parent / "temp_tiles"
+            temp_dir.mkdir(exist_ok=True, parents=True)
+            local_files = []
+            for url in url_list:
+                local_fp = temp_dir / Path(url).name
+                leafmap.download_file(url, str(local_fp), overwrite=True)
+                if local_fp.exists():
+                    local_files.append(str(local_fp))
+            
+            if not local_files:
+                warnings.warn("Failed to download any NED tiles")
+                return False
+            
+            # If single file, just move it
+            if len(local_files) == 1:
+                Path(local_files[0]).rename(out_path)
+            else:
+                # Mosaic multiple files
+                gdal.UseExceptions()
+                vrt = gdal.BuildVRT("/vsimem/temp.vrt", local_files)
+                gdal.Translate(out_path, vrt, format="GTiff")
+                vrt = None  # Close VRT
+            
+            # Clean up temp files
+            for f in local_files:
+                try:
+                    os.remove(f)
+                except:
+                    pass
+            try:
+                temp_dir.rmdir()
+            except:
+                pass
+            
+            return Path(out_path).exists()
+            
         except Exception as e:
-            warnings.warn(f"TNM URL path failed: {e}")
+            warnings.warn(f"Leafmap download/mosaic failed: {e}")
 
         # Try OpenTopography API (USGS NED 10m) with fallback to COP30
         try:
@@ -713,30 +742,13 @@ class SlopeDataCollector:
         region = self._offset(lat, lon, metres=base_window_m)
         if not fresh_path.exists():
             if not self._download_elevation_data(region, str(fresh_path)):
-                # If no reuse files and download failed, provide helpful error
-                if not reuse:
-                    raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon}). "
-                                     f"This may be due to network issues or API limits. "
-                                     f"Try running 'Compute Prediction' first to cache DEM data.")
-                else:
-                    # Fallback to reuse with larger crop if download fails
-                    try:
-                        return _render_from_path(reuse[0], base_half * 2)
-                    except Exception:
-                        raise RuntimeError(f"Failed to download fresh DEM and reuse file {reuse[0].name} is invalid")
+                raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
 
         try:
             return _render_from_path(fresh_path, base_half)
         except Exception:
             # 3) Try once more with larger crop on the same file
-            try:
-                return _render_from_path(fresh_path, base_half * 2)
-            except Exception:
-                # 4) Final fallback to any reuse file with larger crop
-                if reuse:
-                    return _render_from_path(reuse[0], base_half * 2)
-                else:
-                    raise RuntimeError(f"DEM file {fresh_path.name} appears invalid and no reuse files available")
+            return _render_from_path(fresh_path, base_half * 2)
 
     def _crop_window(self, gt: Tuple, width: int, height: int, 
                     lat: float, lon: float, half_side_m: int = 200) -> Tuple[slice, slice]:
