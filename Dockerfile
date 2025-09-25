@@ -26,7 +26,7 @@ COPY models/ ./models/
 RUN pip install --upgrade pip --no-cache-dir
 
 # Install core dependencies first
-RUN pip install --no-cache-dir numpy>=1.26.0 scipy>=1.11.0
+RUN pip install --no-cache-dir numpy>=1.26.0 scipy>=1.11.0 richdem==0.3.4
 
 # Install rasterio first (wheels bundle compatible GDAL); skip pip GDAL to avoid conflicts
 RUN pip install --no-cache-dir rasterio==1.3.9

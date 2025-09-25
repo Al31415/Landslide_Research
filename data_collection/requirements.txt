@@ -17,12 +17,12 @@ pyshp>=2.1.0
 shapely>=1.8.0
 Pillow>=8.3.0
 rasterio==1.3.9
-richdem==0.3.4
 
 # Visualization dependencies
 matplotlib>=3.5.0
 seaborn>=0.11.0
-streamlit>=1.36.0
+# Streamlit is pinned in Dockerfile to a compatible version; avoid overriding here
+# streamlit>=1.36.0
 folium>=0.14.0
 streamlit-folium>=0.18.0
 plotly>=5.18.0
