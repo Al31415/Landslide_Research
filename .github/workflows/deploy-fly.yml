@@ -32,8 +32,21 @@ jobs:
             exit $DEPLOY_FAILED
           fi
       
-      - name: Health Check
+      - name: Health Check (poll until healthy)
         run: |
-          echo "Waiting for deployment to be ready..."
-          sleep 30
-          curl -f https://stability-predictor.fly.dev/_stcore/health || echo "Health check failed; app may still be starting"
+          set -e
+          echo "Polling health endpoint..."
+          ATTEMPTS=20
+          SLEEP=15
+          for i in $(seq 1 $ATTEMPTS); do
+            if curl -fsS https://stability-predictor.fly.dev/_stcore/health > /dev/null; then
+              echo "App is healthy."
+              exit 0
+            fi
+            echo "Attempt $i/$ATTEMPTS not healthy yet; sleeping $SLEEP s..."
+            sleep $SLEEP
+          done
+          echo "Health check failed after $ATTEMPTS attempts. Dumping status and logs..."
+          flyctl status --app stability-predictor || true
+          flyctl logs --app stability-predictor -n 300 || true
+          exit 1
