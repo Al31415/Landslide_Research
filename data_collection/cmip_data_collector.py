@@ -106,7 +106,7 @@ class CMIPDataCollector:
         
         return files
 
-    def load_cmip_data(self, scenario: str) -> Optional[xr.Dataset]:
+    def load_cmip_data(self, scenario: str):
         """
         Load CMIP6 data for a specific scenario.
         
@@ -130,7 +130,7 @@ class CMIPDataCollector:
             print(f"Error loading {scenario} data: {e}")
             return None
 
-    def build_monthly_series(self, scenario: str) -> Optional[xr.DataArray]:
+    def build_monthly_series(self, scenario: str):
         """
         Build monthly precipitation series for a scenario.
         
@@ -189,7 +189,7 @@ class CMIPDataCollector:
             print(f"Error building monthly series for {scenario}: {e}")
             return None
 
-    def stitch_monthly(self, hist_data: xr.DataArray, future_data: xr.DataArray) -> xr.DataArray:
+    def stitch_monthly(self, hist_data, future_data):
         """
         Stitch historical and future monthly data together.
         
@@ -217,7 +217,7 @@ class CMIPDataCollector:
             print(f"Error stitching monthly data: {e}")
             return future_data
 
-    def rolling_sum(self, data: xr.DataArray, months: int = 12) -> xr.DataArray:
+    def rolling_sum(self, data, months: int = 12):
         """
         Calculate rolling sum over specified number of months.
         
@@ -242,7 +242,7 @@ class CMIPDataCollector:
             print(f"Error calculating rolling sum: {e}")
             return data
 
-    def process_all_scenarios(self, roll_months: int = 12) -> Dict[str, xr.DataArray]:
+    def process_all_scenarios(self, roll_months: int = 12) -> Dict[str, Any]:
         """
         Process all CMIP6 scenarios and create rolling precipitation data.
         
@@ -291,7 +291,7 @@ class CMIPDataCollector:
         
         return rolling_data
 
-    def extract_data_at_location(self, rolling_data: Dict[str, xr.DataArray],
+    def extract_data_at_location(self, rolling_data: Dict[str, Any],
                                lat: float, lon: float, date: datetime,
                                scenario: str = "ssp245") -> Optional[float]:
         """
@@ -341,7 +341,7 @@ class CMIPDataCollector:
             print(f"Error extracting {scenario} data: {e}")
             return None
 
-    def calculate_precipitation_metrics(self, rolling_data: Dict[str, xr.DataArray],
+    def calculate_precipitation_metrics(self, rolling_data: Dict[str, Any],
                                       lat: float, lon: float, event_date: datetime,
                                       scenario: str = "ssp245") -> Dict[str, float]:
         """
@@ -372,7 +372,7 @@ class CMIPDataCollector:
         
         return metrics
 
-    def create_forecast_dataset(self, rolling_data: Dict[str, xr.DataArray],
+    def create_forecast_dataset(self, rolling_data: Dict[str, Any],
                               df: pd.DataFrame,
                               lat_col: str = 'Latitude',
                               lon_col: str = 'Longitude',
@@ -427,7 +427,7 @@ class CMIPDataCollector:
         
         return result_df
 
-    def save_forecast_data(self, rolling_data: Dict[str, xr.DataArray],
+    def save_forecast_data(self, rolling_data: Dict[str, Any],
                           output_dir: str = "output") -> None:
         """
         Save forecast data to CSV files.
@@ -448,7 +448,7 @@ class CMIPDataCollector:
             df.to_csv(output_file, index=False)
             print(f"Saved {scenario} forecast data to {output_file}")
 
-    def compute_mean_flux_features(self, rolling_data: Dict[str, xr.DataArray], 
+    def compute_mean_flux_features(self, rolling_data: Dict[str, Any], 
                                  lat: float, lon: float, event_date: datetime,
                                  scenario: str = 'ssp245', windows_days: List[int] = [90, 365]) -> Dict[str, float]:
         """

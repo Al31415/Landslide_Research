@@ -287,11 +287,36 @@ class SlopeDataCollector:
                 # Load DEM and compute attributes
                 attrs = self._load_dem_and_attributes(str(dem_file))
 
-                # Get pixel coordinates
-                ds = gdal.Open(str(dem_file))
-                gt = ds.GetGeoTransform()
-                h, w = ds.ReadAsArray().shape
-                px, py = self._latlon_to_pixel(gt, lat, lon)
+                # Get pixel coordinates and image shape via available backend
+                gt = None
+                w = h = None
+                px = py = None
+                if GDAL_AVAILABLE:
+                    ds = gdal.Open(str(dem_file))
+                    gt = ds.GetGeoTransform()
+                    h, w = ds.ReadAsArray().shape
+                    px, py = self._latlon_to_pixel(gt, lat, lon)
+                elif RASTERIO_AVAILABLE:
+                    with rio.open(str(dem_file)) as ds_r:
+                        tr = ds_r.transform
+                        w, h = ds_r.width, ds_r.height
+                        # row, col from lon/lat
+                        r, c = rio_rowcol(tr, lon, lat)
+                        px, py = int(c), int(r)
+                else:
+                    # Fallback: approximate geotransform assuming ~10 m pixels
+                    img = Image.open(str(dem_file))
+                    arr = np.array(img)
+                    h, w = arr.shape
+                    px_m = float(self.ned_resolution_m)
+                    deg_per_m_lat = 1.0 / 110540.0
+                    deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
+                    xres = px_m * deg_per_m_lon
+                    yres = -px_m * deg_per_m_lat
+                    minx = lon - (w * xres) / 2.0
+                    maxy = lat - (h * yres) / 2.0
+                    gt = (minx, xres, 0.0, maxy, 0.0, yres)
+                    px, py = self._latlon_to_pixel(gt, lat, lon)
 
                 # Clamp to valid bounds to handle edge/rounding cases
                 clamped_px = min(max(px, 0), w - 1)
@@ -301,7 +326,10 @@ class SlopeDataCollector:
                 features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
 
                 # Clean up
-                ds = None
+                try:
+                    ds = None
+                except Exception:
+                    pass
                 if dem_file.exists():
                     dem_file.unlink()
 
