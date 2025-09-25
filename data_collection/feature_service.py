@@ -99,16 +99,16 @@ class FeatureService:
         s = s.str.replace('C', '5', regex=False)
         return pd.to_numeric(s, errors='coerce')
 
-	def compute_features(self, lat: float, lon: float, event_date: datetime,
-	                     progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
-	                     strict_from_csv: bool = False) -> Dict[str, Any]:
-		features: Dict[str, Any] = {}
-		units: Dict[str, str] = {}
-		raw: Dict[str, Any] = {}
+    def compute_features(self, lat: float, lon: float, event_date: datetime,
+                         progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+                         strict_from_csv: bool = False) -> Dict[str, Any]:
+        features: Dict[str, Any] = {}
+        units: Dict[str, str] = {}
+        raw: Dict[str, Any] = {}
 
-		def report(stage: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
-			if progress_callback is not None:
-				progress_callback(stage, message, data or {})
+        def report(stage: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+            if progress_callback is not None:
+                progress_callback(stage, message, data or {})
 
 		# Optional strict CSV override for validation/playground parity
 		if strict_from_csv and self._csv_df is not None and len(self._csv_df) > 0:
