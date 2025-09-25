@@ -83,19 +83,56 @@ class SlopeDataCollector:
         Returns:
             True if download successful, False otherwise
         """
+        # Try TNM via leafmap URL → download
         try:
-            url = leafmap.download_ned(region, return_url=True)
-            if not url:
-                warnings.warn("No NED data found for region.")
-                return False
-                
-            r = requests.get(url[0], timeout=60)
-            r.raise_for_status()
-            Path(out_path).write_bytes(r.content)
-            return True
+            url_list = leafmap.download_ned(region, return_url=True)
+            if url_list and len(url_list) > 0 and isinstance(url_list[0], str):
+                headers = {
+                    'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'
+                }
+                r = requests.get(url_list[0], timeout=120, headers=headers)
+                r.raise_for_status()
+                Path(out_path).write_bytes(r.content)
+                return True
         except Exception as e:
-            warnings.warn(f"Failed to download elevation data: {e}")
-            return False
+            warnings.warn(f"TNM URL path failed: {e}")
+
+        # Try OpenTopography API (USGS NED 10m) with fallback to COP30
+        try:
+            min_lon, min_lat, max_lon, max_lat = region[0], region[1], region[2], region[3]
+            api_key = os.environ.get("OPENTOPO_API_KEY")
+            if api_key:
+                ot_base = "https://portal.opentopography.org/API/globaldem"
+                for demtype in ("USGSNED10m", "COP30"):
+                    params = {
+                        "demtype": demtype,
+                        "south": f"{min_lat}",
+                        "north": f"{max_lat}",
+                        "west": f"{min_lon}",
+                        "east": f"{max_lon}",
+                        "API_Key": api_key,
+                        "format": "GTiff"
+                    }
+                    resp = requests.get(ot_base, params=params, timeout=180)
+                    if resp.status_code == 200 and resp.content:
+                        Path(out_path).write_bytes(resp.content)
+                        return True
+                    else:
+                        warnings.warn(f"OpenTopography {demtype} failed: {resp.status_code} {resp.text[:120]}")
+        except Exception as e:
+            warnings.warn(f"OpenTopography path failed: {e}")
+
+        # As a last resort, try downloading first available TNM staged S3 file if leafmap lists files
+        try:
+            files = leafmap.download_ned(region, out_dir=str(Path(out_path).parent), overwrite=True)
+            if files and Path(files[0]).is_file():
+                # Move/rename to expected path
+                Path(out_path).write_bytes(Path(files[0]).read_bytes())
+                return True
+        except Exception as e:
+            warnings.warn(f"Leafmap staged download fallback failed: {e}")
+
+        return False
 
     def _get_us_border_polygon(self, shapefile_path: str) -> Dict[str, Polygon]:
         """

@@ -11,6 +11,13 @@ except ImportError:
     print("Warning: xarray/cftime not available. CMIP data collection will use default values.")
     XARRAY_AVAILABLE = False
 
+# Optional: intake-esm for Pangeo CMIP6
+try:
+    import intake
+    INTAKE_AVAILABLE = True
+except Exception:
+    INTAKE_AVAILABLE = False
+
 import pandas as pd
 import numpy as np
 import re
@@ -71,10 +78,13 @@ class CMIPDataCollector:
         """
         if not XARRAY_AVAILABLE:
             return False
-            
+        # Prefer local files
         for pattern in self.file_patterns.values():
             if list(self.data_dir.glob(pattern)):
                 return True
+        # Otherwise, Pangeo intake-esm can serve datasets remotely
+        if INTAKE_AVAILABLE:
+            return True
         return False
 
     def find_cmip_files(self) -> Dict[str, str]:
@@ -131,8 +141,26 @@ class CMIPDataCollector:
             Monthly precipitation DataArray
         """
         dataset = self.load_cmip_data(scenario)
-        if dataset is None:
-            return None
+        if dataset is None and INTAKE_AVAILABLE:
+            try:
+                # Use Pangeo CMIP6 catalog
+                cat = intake.open_esm_datastore("https://storage.googleapis.com/cmip6/pangeo-cmip6.json")
+                # CESM2 monthly precipitation for the scenario (nearest equivalent)
+                query = dict(
+                    source_id=[self.model],
+                    table_id=["Amon"],
+                    variable_id=["pr"],
+                    experiment_id=[scenario if scenario != 'hist' else 'historical']
+                )
+                col = cat.search(**query)
+                ds_dict = col.to_dataset_dict(progressbar=False)
+                if not ds_dict:
+                    return None
+                # Take first dataset
+                dataset = list(ds_dict.values())[0]
+            except Exception as e:
+                print(f"Intake ESM failed for {scenario}: {e}")
+                return None
         
         try:
             # Extract precipitation data

@@ -21,6 +21,26 @@ except Exception:
 	from meteostat_data_collector import MeteostatDataCollector
 	from cmip_data_collector import CMIPDataCollector
 
+# Optional playground deps
+try:
+    import leafmap  # type: ignore
+    _LEAFMAP_OK = True
+except Exception:
+    _LEAFMAP_OK = False
+
+try:
+    import richdem as _rd  # type: ignore
+    _RICHDEM_OK = True
+except Exception:
+    _RICHDEM_OK = False
+
+try:
+    import rasterio as _rio  # type: ignore
+    from rasterio.transform import rowcol as _rowcol  # type: ignore
+    _RASTERIO_OK = True
+except Exception:
+    _RASTERIO_OK = False
+
 REQUIRED_FEATURES = [
 	'Slope From USGS Elevation Data',
 	'Slope From SSURGO',
@@ -124,12 +144,38 @@ class FeatureService:
 			except Exception:
 				pass
 
-		# SSURGO (Playground logic)
-		report('SSURGO', 'Querying SSURGO soil properties using Playground logic...')
-		soil_features = self.ssurgo.get_soil_features_for_point(lat, lon)
-		features['Bulk Density'] = soil_features['bulk_density']
-		features['Slope From SSURGO'] = soil_features['slope_from_ssurgo']
-		features['Deepest Soil Horizon Layer'] = soil_features['Deepest_Soil_Horizon_Layer']
+		# SSURGO (align with playground/test2.py: first record, slope_h as 'slope', direct bulk_density)
+		report('SSURGO', 'Querying SSURGO soil properties (playground style first-record)...')
+		try:
+			from ssurgo_data_collector import SSURGODataCollector as _S
+			_sc = _S()
+			soil_df = _sc.get_soil_data(lat, lon)
+			if soil_df is not None and not soil_df.empty:
+				primary = _sc.extract_primary_soil_properties(soil_df)
+				row0 = primary.iloc[0] if not primary.empty else {}
+				bulk_density = float(row0.get('bulk_density', 0.0)) if row0.get('bulk_density') is not None else 0.0
+				# slope_h was aliased to 'slope' in test2 selection
+				slope_from_ssurgo = float(row0.get('slope', 0.0)) if row0.get('slope') is not None else 0.0
+				# deepest horizon from all hzname entries
+				if 'hzname' in primary.columns and not primary['hzname'].dropna().empty:
+					deepest = float(_S._hzname_to_numeric(primary['hzname']).max())
+					if pd.isna(deepest):
+						deepest = 0.0
+				else:
+					deepest = 0.0
+				features['Bulk Density'] = bulk_density
+				features['Slope From SSURGO'] = slope_from_ssurgo
+				features['Deepest Soil Horizon Layer'] = deepest
+			else:
+				features['Bulk Density'] = 0.0
+				features['Slope From SSURGO'] = 0.0
+				features['Deepest Soil Horizon Layer'] = 0.0
+		except Exception:
+			# fallback to previous aggregator
+			soil_features = self.ssurgo.get_soil_features_for_point(lat, lon)
+			features['Bulk Density'] = soil_features['bulk_density']
+			features['Slope From SSURGO'] = soil_features['slope_from_ssurgo']
+			features['Deepest Soil Horizon Layer'] = soil_features['Deepest_Soil_Horizon_Layer']
 		units['Bulk Density'] = 'g/cm³'
 		units['Slope From SSURGO'] = 'degrees'
 		units['Deepest Soil Horizon Layer'] = 'index (mapped from hzname)'
@@ -139,28 +185,87 @@ class FeatureService:
 			'Deepest Soil Horizon Layer': features['Deepest Soil Horizon Layer'],
 		})
 
-		# USGS (Playground logic; RichDEM slope in degrees)
-		report('USGS NED 10m', 'Computing slope from elevation data using Playground logic...')
-		terr = self.usgs.get_terrain_features_for_point(lat, lon)
-		deg = float(terr.get('slope_degrees', np.nan))
+		# USGS (align with playground/test1.py; ensure NED fetched before compute; fallback last)
+		report('USGS NED 10m', 'Computing slope from elevation data (richdem/no-geotransform) with retry...')
+		deg = np.nan
+		try:
+			if _LEAFMAP_OK and _RICHDEM_OK and _RASTERIO_OK:
+				# small bbox to fetch the tile; any small size works to select the correct tile
+				import math as _m
+				R = 6_378_137.0
+				dn = 100; de = 100
+				dLat = dn / R; dLon = de / (R * _m.cos(_m.pi * lat / 180))
+				latO = lat + dLat * 180 / _m.pi; lonO = lon + dLon * 180 / _m.pi
+				region = [lon, lat, lonO, latO]
+				url = leafmap.download_ned(region, return_url=True)
+				if url:
+					fp = url[0]
+					local_fp = str(Path(self.data_dir) / Path(fp).name)
+					# Always (re)download to refresh cache in production
+					leafmap.download_file(fp, local_fp, overwrite=True)
+					from PIL import Image as _Image
+					im = _Image.open(local_fp)
+					imarray = np.array(im)
+					with _rio.open(local_fp) as ds_:
+						tr = ds_.transform
+						_r, _c = _rowcol(tr, lon, lat)
+					dem_rd2 = _rd.rdarray(imarray, no_data=-9999.0)
+					_slope = _rd.TerrainAttribute(dem_rd2, attrib='slope_degrees')
+					deg = float(_slope[int(_r), int(_c)])
+			# If still NaN or download path not available, fallback to internal collector (last resort)
+			if pd.isna(deg):
+				report('USGS NED 10m', 'Fallback to internal NED collector', {})
+				terr = self.usgs.get_terrain_features_for_point(lat, lon)
+				deg = float(terr.get('slope_degrees', np.nan))
+		except Exception:
+			report('USGS NED 10m', 'RichDEM path failed; using internal collector', {})
+			terr = self.usgs.get_terrain_features_for_point(lat, lon)
+			deg = float(terr.get('slope_degrees', np.nan))
 		features['Slope From USGS Elevation Data'] = deg
 		units['Slope From USGS Elevation Data'] = 'degrees'
 		report('USGS NED 10m', 'USGS slope computed using Playground logic.', {
 			'Slope From USGS Elevation Data (degrees)': features['Slope From USGS Elevation Data'],
 		})
 
-		# Meteostat (Playground logic)
-		report('Meteostat', 'Fetching precipitation data using Playground logic...')
-		pr = self.meteostat.get_precipitation_data_playground_logic(lat, lon, event_date)
-		for k, v in pr.items():
-			val = float(v) if v is not None and not pd.isna(v) else np.nan
-			if pd.notna(val) and abs(val) < 1e-6:
-				val = 0.0
-			features[k] = val
-			if 'max_' in k:
-				units[k] = 'mm'
-			elif 'avg_' in k:
-				units[k] = 'mm/day'
+		# Meteostat (align with test3.py: interval-specific fetch + max/mean)
+		report('Meteostat', 'Fetching precipitation data (playground intervals)...')
+		try:
+			from meteostat import Point, Daily  # type: ignore
+			from datetime import timedelta as _td
+			end = pd.to_datetime(event_date)
+			location = Point(lat, lon)
+			def _fetch(start, end):
+				try:
+					return Daily(location, start, end).fetch()
+				except Exception:
+					return pd.DataFrame()
+			data_1 = _fetch(end - _td(days=1), end)
+			data_3 = _fetch(end - _td(days=3), end)
+			data_7 = _fetch(end - _td(days=7), end)
+			data_14 = _fetch(end - _td(days=14), end)
+			data_30 = _fetch(end - _td(days=30), end)
+			data_60 = _fetch(end - _td(days=60), end)
+			data_90 = _fetch(end - _td(days=90), end)
+			data_365 = _fetch(end - _td(days=365), end)
+			features['max_1_day_prcp'] = float(data_1['prcp'].max()) if ('prcp' in data_1 and not data_1.empty) else 0.0
+			features['max_3_day_prcp'] = float(data_3['prcp'].max()) if ('prcp' in data_3 and not data_3.empty) else 0.0
+			features['max_7_day_prcp'] = float(data_7['prcp'].max()) if ('prcp' in data_7 and not data_7.empty) else 0.0
+			features['max_14_day_prcp'] = float(data_14['prcp'].max()) if ('prcp' in data_14 and not data_14.empty) else 0.0
+			features['avg_30_day_prcp'] = float(data_30['prcp'].mean()) if ('prcp' in data_30 and not data_30.empty) else 0.0
+			features['avg_60_day_prcp'] = float(data_60['prcp'].mean()) if ('prcp' in data_60 and not data_60.empty) else 0.0
+			features['avg_90_day_prcp'] = float(data_90['prcp'].mean()) if ('prcp' in data_90 and not data_90.empty) else 0.0
+			features['avg_365_day_prcp'] = float(data_365['prcp'].mean()) if ('prcp' in data_365 and not data_365.empty) else 0.0
+			units.update({
+				'max_1_day_prcp': 'mm', 'max_3_day_prcp': 'mm', 'max_7_day_prcp': 'mm', 'max_14_day_prcp': 'mm',
+				'avg_30_day_prcp': 'mm/day', 'avg_60_day_prcp': 'mm/day', 'avg_90_day_prcp': 'mm/day', 'avg_365_day_prcp': 'mm/day'
+			})
+		except Exception:
+			# fallback to existing collector
+			pr = self.meteostat.get_precipitation_data_playground_logic(lat, lon, end)
+			for k, v in pr.items():
+				val = float(v) if v is not None and not pd.isna(v) else 0.0
+				features[k] = val
+				units[k] = 'mm' if 'max_' in k else 'mm/day'
 		report('Meteostat', 'Meteostat precipitation data fetched using Playground logic.', {
 			'max_1_day_prcp (mm)': features.get('max_1_day_prcp'),
 			'max_3_day_prcp (mm)': features.get('max_3_day_prcp'),
