@@ -28,7 +28,15 @@ jobs:
           if [ -n "$DEPLOY_FAILED" ]; then
             echo "Deploy failed with code $DEPLOY_FAILED. Dumping status and logs..."
             flyctl status --app stability-predictor || true
-            flyctl logs --app stability-predictor -n 200 || true
+            flyctl logs --app stability-predictor --no-tail --since 1h || true
+            # Attempt per-machine logs for deeper detail
+            MACHINES=$(flyctl machines list --app stability-predictor | awk 'NR>1 {print $1}')
+            for m in $MACHINES; do
+              echo "\n===== Logs for machine $m ====="
+              flyctl logs --app stability-predictor --machine "$m" --no-tail --since 1h || true
+              echo "\n===== Status for machine $m ====="
+              flyctl machine status "$m" --app stability-predictor || true
+            done
             exit $DEPLOY_FAILED
           fi
       
@@ -39,7 +47,7 @@ jobs:
           ATTEMPTS=20
           SLEEP=15
           for i in $(seq 1 $ATTEMPTS); do
-            if curl -fsS https://stability-predictor.fly.dev/_stcore/health > /dev/null; then
+            if curl -fsS https://stability-predictor.fly.dev/_stcore/health > /dev/null || curl -fsS https://stability-predictor.fly.dev/health > /dev/null; then
               echo "App is healthy."
               exit 0
             fi
@@ -48,5 +56,12 @@ jobs:
           done
           echo "Health check failed after $ATTEMPTS attempts. Dumping status and logs..."
           flyctl status --app stability-predictor || true
-          flyctl logs --app stability-predictor -n 300 || true
+          flyctl logs --app stability-predictor --no-tail --since 1h || true
+          MACHINES=$(flyctl machines list --app stability-predictor | awk 'NR>1 {print $1}')
+          for m in $MACHINES; do
+            echo "\n===== Logs for machine $m ====="
+            flyctl logs --app stability-predictor --machine "$m" --no-tail --since 1h || true
+            echo "\n===== Status for machine $m ====="
+            flyctl machine status "$m" --app stability-predictor || true
+          done
           exit 1
