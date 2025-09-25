@@ -5,31 +5,6 @@ on:
     branches:
       - deploy-app
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: false
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
-name: Deploy to Fly.io
-
-on:
-  push:
-    branches:
-      - deploy-app
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
 
 jobs:
   deploy:
