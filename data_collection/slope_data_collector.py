@@ -79,60 +79,40 @@ class SlopeDataCollector:
             except Exception as e:
                 warnings.warn(f"Could not load shapefile: {e}")
 
-    def _download_elevation_data(self, region: List[float], out_path: str) -> bool:
+    def _download_elevation_data(self, region: List[float], out_path: str, lat: float, lon: float) -> bool:
         """
-        Download and mosaic NED GeoTIFF(s) for the bounding box.
+        Download the NED GeoTIFF tile containing the target lat/lon.
         """
-        import os
-        from osgeo import gdal
-        
         try:
-            # Get list of URLs
             url_list = leafmap.download_ned(region, return_url=True)
             if not url_list:
                 warnings.warn("No NED tiles found for region")
                 return False
             
-            # Download all tiles to temp dir
-            temp_dir = Path(out_path).parent / "temp_tiles"
-            temp_dir.mkdir(exist_ok=True, parents=True)
-            local_files = []
-            for url in url_list:
-                local_fp = temp_dir / Path(url).name
-                leafmap.download_file(url, str(local_fp), overwrite=True)
-                if local_fp.exists():
-                    local_files.append(str(local_fp))
+            # Compute tile string from target point
+            tile_n = math.ceil(lat)
+            tile_w = abs(math.floor(lon))
+            tile_str = f"n{tile_n}w{tile_w}"
             
-            if not local_files:
-                warnings.warn("Failed to download any NED tiles")
-                return False
+            # Find matching URL
+            selected_url = next((url for url in url_list if tile_str in url), url_list[0] if url_list else None)
+            if not selected_url:
+                warnings.warn("No matching tile found; using first if available")
+                if url_list:
+                    selected_url = url_list[0]
+                else:
+                    return False
             
-            # If single file, just move it
-            if len(local_files) == 1:
-                Path(local_files[0]).rename(out_path)
-            else:
-                # Mosaic multiple files
-                gdal.UseExceptions()
-                vrt = gdal.BuildVRT("/vsimem/temp.vrt", local_files)
-                gdal.Translate(out_path, vrt, format="GTiff")
-                vrt = None  # Close VRT
-            
-            # Clean up temp files
-            for f in local_files:
-                try:
-                    os.remove(f)
-                except:
-                    pass
-            try:
-                temp_dir.rmdir()
-            except:
-                pass
-            
-            return Path(out_path).exists()
-            
+            # Download selected tile
+            headers = {'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'}
+            r = requests.get(selected_url, timeout=120, headers=headers)
+            r.raise_for_status()
+            Path(out_path).write_bytes(r.content)
+            return True
+        
         except Exception as e:
-            warnings.warn(f"Leafmap download/mosaic failed: {e}")
-
+            warnings.warn(f"TNM URL path failed: {e}")
+        
         # Try OpenTopography API (USGS NED 10m) with fallback to COP30
         try:
             min_lon, min_lat, max_lon, max_lat = region[0], region[1], region[2], region[3]
@@ -302,14 +282,14 @@ class SlopeDataCollector:
         Path(output_dir).mkdir(exist_ok=True)
 
         # Try progressively larger regions to ensure the point is within bounds
-        region_sizes_m = [10_000, 50_000, 100_000]
+        region_sizes_m = [2000, 5000, 10000]
 
         last_error: Optional[Exception] = None
         for metres in region_sizes_m:
             dem_file = Path(output_dir) / f"dem_{lat:.5f}_{lon:.5f}_{metres}.tif"
             try:
                 region = self._offset(lat, lon, metres=metres)
-                if not self._download_elevation_data(region, str(dem_file)):
+                if not self._download_elevation_data(region, str(dem_file), lat, lon):
                     last_error = RuntimeError(f"Failed to download DEM for point ({lat}, {lon}) at {metres} m window")
                     continue
 
@@ -429,7 +409,7 @@ class SlopeDataCollector:
         region = self._offset(lat, lon)
         dem_file = Path(output_dir) / f"dem_plot_{lat:.5f}_{lon:.5f}.tif"
         
-        if not self._download_elevation_data(region, str(dem_file)):
+        if not self._download_elevation_data(region, str(dem_file), lat, lon):
             print(f"Failed to download DEM for plotting at ({lat}, {lon})")
             return
         
@@ -448,10 +428,37 @@ class SlopeDataCollector:
     def _plot_dem(self, lat: float, lon: float, dem_file: str, 
                  save_plots: bool, output_dir: str) -> None:
         """Plot DEM elevation data."""
-        ds = gdal.Open(dem_file)
-        dem = ds.ReadAsArray()
-        gt = ds.GetGeoTransform()
-        h, w = dem.shape
+        dem = None
+        gt = None
+        h = w = None
+        try:
+            if GDAL_AVAILABLE:
+                ds = gdal.Open(dem_file)
+                dem = ds.ReadAsArray()
+                gt = ds.GetGeoTransform()
+                h, w = dem.shape
+            elif RASTERIO_AVAILABLE:
+                with rio.open(dem_file) as ds_r:
+                    dem = ds_r.read(1)
+                    tr = ds_r.transform
+                    # Convert affine to GDAL-like tuple
+                    gt = (tr.c, tr.a, tr.b, tr.f, tr.d, tr.e)
+                    h, w = dem.shape
+            else:
+                img = Image.open(dem_file)
+                dem = np.array(img)
+                h, w = dem.shape
+                # Approximate geotransform for cropping
+                px_m = float(self.ned_resolution_m)
+                deg_per_m_lat = 1.0 / 110540.0
+                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
+                xres = px_m * deg_per_m_lon
+                yres = -px_m * deg_per_m_lat
+                minx = lon - (w * xres) / 2.0
+                maxy = lat - (h * yres) / 2.0
+                gt = (minx, xres, 0.0, maxy, 0.0, yres)
+        except Exception as e:
+            raise RuntimeError(f"Failed to read DEM for plotting: {e}")
         
         # Crop to window around point
         ys, xs = self._crop_window(gt, w, h, lat, lon)
@@ -488,10 +495,36 @@ class SlopeDataCollector:
         attrs = self._load_dem_and_attributes(dem_file)
         slope = attrs['slope_degrees']
         
-        ds = gdal.Open(dem_file)
-        dem = ds.ReadAsArray()
-        gt = ds.GetGeoTransform()
-        h, w = dem.shape
+        dem = None
+        gt = None
+        h = w = None
+        try:
+            if GDAL_AVAILABLE:
+                ds = gdal.Open(dem_file)
+                dem = ds.ReadAsArray()
+                gt = ds.GetGeoTransform()
+                h, w = dem.shape
+            elif RASTERIO_AVAILABLE:
+                with rio.open(dem_file) as ds_r:
+                    dem = ds_r.read(1)
+                    tr = ds_r.transform
+                    gt = (tr.c, tr.a, tr.b, tr.f, tr.d, tr.e)
+                    h, w = dem.shape
+            else:
+                img = Image.open(dem_file)
+                dem = np.array(img)
+                h, w = dem.shape
+                # Approximate geotransform for cropping
+                px_m = float(self.ned_resolution_m)
+                deg_per_m_lat = 1.0 / 110540.0
+                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
+                xres = px_m * deg_per_m_lon
+                yres = -px_m * deg_per_m_lat
+                minx = lon - (w * xres) / 2.0
+                maxy = lat - (h * yres) / 2.0
+                gt = (minx, xres, 0.0, maxy, 0.0, yres)
+        except Exception as e:
+            raise RuntimeError(f"Failed to read DEM for slope plotting: {e}")
         
         # Crop to window around point
         ys, xs = self._crop_window(gt, w, h, lat, lon)
@@ -536,7 +569,7 @@ class SlopeDataCollector:
         # Download DEM data around the point (small window for performance)
         region = self._offset(lat, lon, metres=max(2_000, half_side_m * 4))
         dem_file = Path(output_dir) / f"dem_3d_{lat:.5f}_{lon:.5f}.tif"
-        if not self._download_elevation_data(region, str(dem_file)):
+        if not self._download_elevation_data(region, str(dem_file), lat, lon):
             raise RuntimeError(f"Failed to download DEM for 3D plot at ({lat}, {lon})")
 
         try:
@@ -739,9 +772,9 @@ class SlopeDataCollector:
                 pass
 
         # 2) Fresh small download
-        region = self._offset(lat, lon, metres=base_window_m)
+        region = self._offset(lat, lon, metres=2000)
         if not fresh_path.exists():
-            if not self._download_elevation_data(region, str(fresh_path)):
+            if not self._download_elevation_data(region, str(fresh_path), lat, lon):
                 raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
 
         try:

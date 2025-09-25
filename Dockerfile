@@ -3,7 +3,7 @@ FROM python:3.9-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gdal-bin libgdal-dev proj-bin libproj-dev \
+    gdal-bin libgdal-dev python3-gdal proj-bin libproj-dev \
     build-essential python3-dev \
     ca-certificates curl \
     libfreetype6 libpng16-16 \
