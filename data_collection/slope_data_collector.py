@@ -31,6 +31,12 @@ except Exception:
 from shapely.geometry import Point, Polygon
 from PIL import Image
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+try:
+    import rasterio as rio  # type: ignore
+    from rasterio.transform import rowcol as rio_rowcol  # type: ignore
+    RASTERIO_AVAILABLE = True
+except Exception:
+    RASTERIO_AVAILABLE = False
 import plotly.graph_objects as go
 
 

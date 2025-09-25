@@ -3,7 +3,7 @@ FROM python:3.9-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gdal-bin libgdal-dev \
+    gdal-bin libgdal-dev proj-bin libproj-dev \
     build-essential python3-dev \
     ca-certificates curl \
     libfreetype6 libpng16-16 \
@@ -26,14 +26,11 @@ RUN pip install --upgrade pip --no-cache-dir
 # Install core dependencies first
 RUN pip install --no-cache-dir numpy>=1.26.0 scipy>=1.11.0
 
-# Install GDAL
-RUN pip install --no-cache-dir GDAL==$(gdal-config --version)
-
-# Install rasterio and richdem (with C deps already present)
-RUN pip install --no-cache-dir rasterio==1.3.9 richdem==0.3.4
+# Install rasterio first (wheels bundle compatible GDAL); skip pip GDAL to avoid conflicts
+RUN pip install --no-cache-dir rasterio==1.3.9
 
 # Install other dependencies
-RUN pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 && \
+RUN pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 rasterio==1.3.9 && \
     pip install --no-cache-dir tqdm>=4.64.0 pydeck>=0.8.0 shap>=0.41.0 scikit-learn>=1.1.0 && \
     pip install --no-cache-dir joblib==1.3.2 streamlit==1.31.0 matplotlib==3.7.3 shapely==2.0.1 && \
     pip install --no-cache-dir leafmap>=0.15.0 && \
