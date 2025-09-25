@@ -75,7 +75,20 @@ class FeatureService:
 			self._csv_df = None
 
 	def _load_model(self) -> None:
-		self.model = joblib.load(self.model_path)
+		candidates = [
+			Path(self.model_path),
+			Path(__file__).parent.parent / 'models' / 'best_model_RandomForest.joblib',
+			Path(__file__).parent / 'models' / 'best_model_RandomForest.joblib',
+			Path.cwd() / 'models' / 'best_model_RandomForest.joblib',
+		]
+		for p in candidates:
+			try:
+				if p is not None and Path(p).exists():
+					self.model = joblib.load(str(p))
+					return
+			except Exception:
+				continue
+		raise FileNotFoundError(f"Model file not found. Tried: {', '.join(str(p) for p in candidates)}")
 
 	def _ensure_cmip(self) -> None:
 		if self._rolling is None:
