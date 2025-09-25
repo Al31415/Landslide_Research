@@ -591,40 +591,19 @@ class SlopeDataCollector:
                               half_side_m: int = 200) -> Tuple[go.Figure, str]:
         """
         Build an interactive 3D topographic Plotly figure (pan/zoom/rotate).
-        If a flat/invalid DEM is encountered, retry with larger regions before failing.
-        Reuses any DEM previously downloaded for the slope feature.
+        Strategy:
+        - Reuse existing DEM from slope if available (smallest window)
+        - Otherwise download a small window (~2 km)
+        - Crop first, then compute slope on the cropped window only
+        - If crop is invalid/flat, retry once with a larger window, then fail
         Returns (figure, resolution_label).
         """
         Path(output_dir).mkdir(exist_ok=True)
 
-        region_sizes_m = [max(2_000, half_side_m * 4), 10_000, 50_000]
-        last_error: Optional[Exception] = None
-
-        # Reuse existing DEMs from slope lookups first
-        candidate_paths: List[Path] = list(Path(output_dir).glob(f"dem_{lat:.5f}_{lon:.5f}_*.tif"))
-        # Then planned 3D-specific downloads
-        for metres in region_sizes_m:
-            candidate_paths.append(Path(output_dir) / f"dem_3d_plotly_{lat:.5f}_{lon:.5f}_{metres}.tif")
-
-        for path in candidate_paths:
-            if not path.exists():
-                # Only download for the 3D-specific planned paths
-                if path.name.startswith("dem_3d_plotly_"):
-                    try:
-                        metres = int(path.stem.split("_")[-1])
-                    except Exception:
-                        metres = max(2_000, half_side_m * 4)
-                    region = self._offset(lat, lon, metres=metres)
-                    if not self._download_elevation_data(region, str(path)):
-                        last_error = RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon}) window {metres} m")
-                        continue
-                else:
-                    continue
-
-            # Try to render using this DEM path
+        # Helper: render from a DEM file path and a crop size
+        def _render_from_path(path: Path, crop_half_m: int) -> Tuple[go.Figure, str]:
             ds = None
             try:
-                # Read DEM (GDAL preferred)
                 try:
                     if GDAL_AVAILABLE:
                         ds = gdal.Open(str(path))
@@ -635,42 +614,41 @@ class SlopeDataCollector:
                 except Exception:
                     img = Image.open(str(path))
                     dem = np.array(img)
-                    # Approximate degrees-per-pixel from ~10 m resolution at latitude
+                    # Approx geotransform with ~10 m pixels
                     px_m = 10.0
                     deg_per_m_lat = 1.0 / 110540.0
                     deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
                     xres = px_m * deg_per_m_lon
                     yres = -px_m * deg_per_m_lat
                     minx = lon - (dem.shape[1] * xres) / 2.0
-                    maxy = lat - (dem.shape[0] * yres) / 2.0  # yres is negative
+                    maxy = lat - (dem.shape[0] * yres) / 2.0
                     gt = (minx, xres, 0.0, maxy, 0.0, yres)
 
                 h, w = dem.shape
-
-                # Terrain attributes (slope for coloring)
-                attrs = self._load_dem_and_attributes(str(path))
-                slope = attrs['slope_degrees']
-
-                # Crop window
-                ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
+                ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=crop_half_m)
                 dem_c = dem[ys, xs]
-                slope_c = slope[ys, xs]
 
-                # Downsample for performance
+                # Compute slope on the cropped window only
+                if RICHDEM_AVAILABLE:
+                    dem_rd = rd.rdarray(dem_c.astype(np.float32), no_data=-9999)
+                    slope_c = rd.TerrainAttribute(dem_rd, "slope_degrees")
+                else:
+                    dy, dx = np.gradient(dem_c)
+                    slope_c = np.rad2deg(np.arctan(np.sqrt(dx*dx + dy*dy)))
+
+                # Validate content
+                if (not np.isfinite(dem_c).any()) or ((np.nanmax(dem_c) - np.nanmin(dem_c)) < 1e-3) or (np.nanstd(dem_c) < 1e-3):
+                    raise ValueError("DEM window appears flat or invalid")
+
+                # Downsample
                 size_y, size_x = dem_c.shape
                 target = 200
                 stride = int(max(1, np.ceil(max(size_x, size_y) / target)))
                 if stride > 1:
                     dem_c = dem_c[::stride, ::stride]
                     slope_c = slope_c[::stride, ::stride]
-                    size_y, size_x = dem_c.shape
 
-                # If DEM appears flat/invalid, try next candidate
-                if (not np.isfinite(dem_c).any()) or ((np.nanmax(dem_c) - np.nanmin(dem_c)) < 1e-3) or (np.nanstd(dem_c) < 1e-3):
-                    last_error = ValueError("DEM window appears flat or invalid")
-                    continue
-
-                # Build latitude/longitude grids corresponding to cropped/downsampled pixels
+                # Build lon/lat grids
                 xmin, xmax = xs.start, xs.stop
                 ymin, ymax = ys.start, ys.stop
                 x_idx = np.arange(xmin, xmax, stride)
@@ -679,7 +657,7 @@ class SlopeDataCollector:
                 lat_vals = gt[3] + y_idx * gt[5]
                 X, Y = np.meshgrid(lon_vals, lat_vals)
 
-                # Resolution label detection (approximate)
+                # Resolution label
                 try:
                     m_per_deg_lat = 110540.0
                     m_per_deg_lon = 111320.0 * math.cos(math.radians(lat))
@@ -690,14 +668,13 @@ class SlopeDataCollector:
                 except Exception:
                     res_label = "Unknown resolution"
 
-                # Center point elevation
+                # Center elevation
                 px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
                 if 0 <= px_c < w and 0 <= py_c < h:
                     center_z = float(dem[int(py_c), int(px_c)])
                 else:
                     center_z = float(np.nanmean(dem_c))
 
-                # Build Plotly figure
                 surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
                 marker = go.Scatter3d(x=[lon], y=[lat], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
                 fig = go.Figure(data=[surface, marker])
@@ -707,9 +684,34 @@ class SlopeDataCollector:
             finally:
                 if 'ds' in locals() and ds is not None:
                     ds = None
-                # Keep DEM file on disk for reuse
 
-        raise RuntimeError(f"Failed to build interactive 3D: {last_error}")
+        # Pick a reuse DEM if available (smallest window first)
+        reuse = sorted(Path(output_dir).glob(f"dem_{lat:.5f}_{lon:.5f}_*.tif"),
+                       key=lambda p: int(p.stem.split("_")[-1]) if p.stem.split("_")[-1].isdigit() else 1_000_000)
+
+        # Try reuse path → then small fresh download → then reuse with larger crop once
+        base_half = half_side_m
+        base_window_m = max(2_000, half_side_m * 4)
+        fresh_path = Path(output_dir) / f"dem_3d_plotly_{lat:.5f}_{lon:.5f}_{base_window_m}.tif"
+
+        # 1) Reuse (if present)
+        if reuse:
+            try:
+                return _render_from_path(reuse[0], base_half)
+            except Exception:
+                pass
+
+        # 2) Fresh small download
+        region = self._offset(lat, lon, metres=base_window_m)
+        if not fresh_path.exists():
+            if not self._download_elevation_data(region, str(fresh_path)):
+                raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
+
+        try:
+            return _render_from_path(fresh_path, base_half)
+        except Exception:
+            # 3) Try once more with larger crop on the same file
+            return _render_from_path(fresh_path, base_half * 2)
 
     def _crop_window(self, gt: Tuple, width: int, height: int, 
                     lat: float, lon: float, half_side_m: int = 200) -> Tuple[slice, slice]:
