@@ -16,6 +16,7 @@ ENV PROJ_LIB=/usr/share/proj
 
 WORKDIR /app
 
+COPY requirements.txt ./requirements.txt
 COPY data_collection/ ./data_collection/
 COPY models/ ./models/
 
@@ -30,7 +31,8 @@ RUN pip install --no-cache-dir numpy>=1.26.0 scipy>=1.11.0
 RUN pip install --no-cache-dir rasterio==1.3.9
 
 # Install other dependencies
-RUN pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 rasterio==1.3.9 && \
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir xmltodict>=0.12.0 geopy>=2.2.0 meteostat>=1.6.0 pyshp>=2.1.0 rasterio==1.3.9 && \
     pip install --no-cache-dir tqdm>=4.64.0 pydeck>=0.8.0 shap>=0.41.0 scikit-learn>=1.1.0 && \
     pip install --no-cache-dir joblib==1.3.2 streamlit==1.31.0 matplotlib==3.7.3 shapely==2.0.1 && \
     pip install --no-cache-dir leafmap>=0.15.0 && \
