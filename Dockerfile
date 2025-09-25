@@ -16,6 +16,8 @@ ENV PROJ_LIB=/usr/share/proj
 
 WORKDIR /app
 
+ARG CACHEBUST=1
+RUN echo "Build cache bust: $CACHEBUST"
 COPY data_collection/ ./data_collection/
 COPY models/ ./models/
 

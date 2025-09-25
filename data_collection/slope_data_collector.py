@@ -801,8 +801,8 @@ class SlopeDataCollector:
             except Exception:
                 pass
 
-        # 2) Fresh small download
-        region = self._offset(lat, lon, metres=2000)
+        # 2) Fresh download with robust window (align with slope feature)
+        region = self._offset(lat, lon, metres=base_window_m)
         if not fresh_path.exists():
             if not self._download_elevation_data(region, str(fresh_path), lat, lon):
                 raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
