@@ -286,17 +286,9 @@ class SlopeDataCollector:
                 h, w = ds.ReadAsArray().shape
                 px, py = self._latlon_to_pixel(gt, lat, lon)
 
-                # If slightly out-of-bounds due to rounding, clamp to bounds
+                # Clamp to valid bounds to handle edge/rounding cases
                 clamped_px = min(max(px, 0), w - 1)
                 clamped_py = min(max(py, 0), h - 1)
-
-                if not (0 <= px < w and 0 <= py < h):
-                    # Retry with next larger region if available
-                    last_error = ValueError(f"Point ({lat}, {lon}) outside DEM bounds for window {metres} m; px={px}, py={py}, w={w}, h={h}")
-                    ds = None
-                    if dem_file.exists():
-                        dem_file.unlink()
-                    continue
 
                 # Extract values at clamped pixel (safe)
                 features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
