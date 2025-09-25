@@ -59,45 +59,45 @@ REQUIRED_FEATURES = [
 class FeatureService:
     def __init__(self, data_dir: str = str(Path(__file__).parent.parent / 'data'),
                  model_path: str = str(Path(__file__).parent.parent / 'models' / 'best_model_RandomForest.joblib')):
-		self.data_dir = data_dir
-		self.model_path = model_path
-		self._load_model()
-		self.ssurgo = SSURGODataCollector()
-		self.usgs = SlopeDataCollector()
-		self.meteostat = MeteostatDataCollector()
-		self.cmip = CMIPDataCollector(self.data_dir)
-		self._rolling = None
-		# Optional CSV cache for strict validation mode
-		csv_path = Path(self.data_dir) / 'Corrected_Input_Data.csv'
-		try:
-			self._csv_df = pd.read_csv(csv_path) if csv_path.exists() else None
-		except Exception:
-			self._csv_df = None
+        self.data_dir = data_dir
+        self.model_path = model_path
+        self._load_model()
+        self.ssurgo = SSURGODataCollector()
+        self.usgs = SlopeDataCollector()
+        self.meteostat = MeteostatDataCollector()
+        self.cmip = CMIPDataCollector(self.data_dir)
+        self._rolling = None
+        # Optional CSV cache for strict validation mode
+        csv_path = Path(self.data_dir) / 'Corrected_Input_Data.csv'
+        try:
+            self._csv_df = pd.read_csv(csv_path) if csv_path.exists() else None
+        except Exception:
+            self._csv_df = None
 
-	def _load_model(self) -> None:
-		self.model = joblib.load(self.model_path)
+    def _load_model(self) -> None:
+        self.model = joblib.load(self.model_path)
 
-	def _ensure_cmip(self) -> None:
-		if self._rolling is None:
-			self._rolling = self.cmip.process_all_scenarios()
+    def _ensure_cmip(self) -> None:
+        if self._rolling is None:
+            self._rolling = self.cmip.process_all_scenarios()
 
-	@staticmethod
-	def _hzname_to_numeric(hzname_series: pd.Series) -> pd.Series:
-		s = hzname_series.fillna("").astype(str)
-		s = s.str.replace('[^A-Z]', '', regex=True)
-		s = s.str.replace('BE', '3.5', regex=False)
-		s = s.str.replace('BC', '4.5', regex=False)
-		s = s.str.replace('AC', '3.5', regex=False)
-		s = s.str.replace('EB', '3.5', regex=False)
-		s = s.str.replace('AB', '3', regex=False)
-		s = s.str.replace('AE', '2.5', regex=False)
-		s = s.str.replace('O', '1', regex=False)
-		s = s.str.replace('H', '1', regex=False)
-		s = s.str.replace('A', '2', regex=False)
-		s = s.str.replace('E', '3', regex=False)
-		s = s.str.replace('B', '4', regex=False)
-		s = s.str.replace('C', '5', regex=False)
-		return pd.to_numeric(s, errors='coerce')
+    @staticmethod
+    def _hzname_to_numeric(hzname_series: pd.Series) -> pd.Series:
+        s = hzname_series.fillna("").astype(str)
+        s = s.str.replace('[^A-Z]', '', regex=True)
+        s = s.str.replace('BE', '3.5', regex=False)
+        s = s.str.replace('BC', '4.5', regex=False)
+        s = s.str.replace('AC', '3.5', regex=False)
+        s = s.str.replace('EB', '3.5', regex=False)
+        s = s.str.replace('AB', '3', regex=False)
+        s = s.str.replace('AE', '2.5', regex=False)
+        s = s.str.replace('O', '1', regex=False)
+        s = s.str.replace('H', '1', regex=False)
+        s = s.str.replace('A', '2', regex=False)
+        s = s.str.replace('E', '3', regex=False)
+        s = s.str.replace('B', '4', regex=False)
+        s = s.str.replace('C', '5', regex=False)
+        return pd.to_numeric(s, errors='coerce')
 
 	def compute_features(self, lat: float, lon: float, event_date: datetime,
 	                     progress_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
