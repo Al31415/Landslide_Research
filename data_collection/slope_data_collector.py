@@ -4,6 +4,7 @@ Collects terrain and slope data using NED DEM tiles.
 """
 
 import math
+import os
 import random
 import requests
 from pathlib import Path
