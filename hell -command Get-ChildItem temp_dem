@@ -1,0 +1,5 @@
+[33me9594fe7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdeploy-app[m[33m, [m[1;31morigin/deploy-app[m[33m)[m 3D DEM: mask GDAL NoData to NaN; default to 10 km window; prefer slope DEM to avoid flat surfaces
+[33m77dea86d[m 3D topography: revert to fast, reliable flow (reuse DEM; single small download; crop-first slope; one retry)
+[33m33bdf30e[m 3D topography: reuse slope DEM if present; avoid redundant downloads; keep DEM files for reuse
+[33m0325e7a9[m Fix: avoid xr type in annotations; add intake/intake-esm; harden slope pixel indexing; ensure folium deps via requirements
+[33mf7e83112[m Docker: install proj libs; rely on rasterio wheels; remove pip GDAL; add optional rasterio import

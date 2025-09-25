@@ -713,13 +713,30 @@ class SlopeDataCollector:
         region = self._offset(lat, lon, metres=base_window_m)
         if not fresh_path.exists():
             if not self._download_elevation_data(region, str(fresh_path)):
-                raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
+                # If no reuse files and download failed, provide helpful error
+                if not reuse:
+                    raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon}). "
+                                     f"This may be due to network issues or API limits. "
+                                     f"Try running 'Compute Prediction' first to cache DEM data.")
+                else:
+                    # Fallback to reuse with larger crop if download fails
+                    try:
+                        return _render_from_path(reuse[0], base_half * 2)
+                    except Exception:
+                        raise RuntimeError(f"Failed to download fresh DEM and reuse file {reuse[0].name} is invalid")
 
         try:
             return _render_from_path(fresh_path, base_half)
         except Exception:
             # 3) Try once more with larger crop on the same file
-            return _render_from_path(fresh_path, base_half * 2)
+            try:
+                return _render_from_path(fresh_path, base_half * 2)
+            except Exception:
+                # 4) Final fallback to any reuse file with larger crop
+                if reuse:
+                    return _render_from_path(reuse[0], base_half * 2)
+                else:
+                    raise RuntimeError(f"DEM file {fresh_path.name} appears invalid and no reuse files available")
 
     def _crop_window(self, gt: Tuple, width: int, height: int, 
                     lat: float, lon: float, half_side_m: int = 200) -> Tuple[slice, slice]:
