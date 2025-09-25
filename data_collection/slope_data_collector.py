@@ -87,29 +87,36 @@ class SlopeDataCollector:
             url_list = leafmap.download_ned(region, return_url=True)
             if not url_list:
                 warnings.warn("No NED tiles found for region")
-                return False
+                url_list = []
             
             # Compute tile string from target point
             tile_n = math.ceil(lat)
             tile_w = abs(math.floor(lon))
             tile_str = f"n{tile_n}w{tile_w}"
             
-            # Find matching URL
-            selected_url = next((url for url in url_list if tile_str in url), url_list[0] if url_list else None)
-            if not selected_url:
-                warnings.warn("No matching tile found; using first if available")
-                if url_list:
-                    selected_url = url_list[0]
-                else:
-                    return False
+            selected_url = None
+            if url_list:
+                selected_url = next((url for url in url_list if tile_str in url), url_list[0])
             
-            # Download selected tile
-            headers = {'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'}
-            r = requests.get(selected_url, timeout=120, headers=headers)
-            r.raise_for_status()
-            Path(out_path).write_bytes(r.content)
-            return True
-        
+            downloaded = False
+            if selected_url:
+                # Download selected tile using leafmap's helper
+                try:
+                    leafmap.download_file(selected_url, out_path, overwrite=True)
+                    downloaded = Path(out_path).exists()
+                except Exception:
+                    try:
+                        headers = {'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'}
+                        r = requests.get(selected_url, timeout=180, headers=headers)
+                        r.raise_for_status()
+                        Path(out_path).write_bytes(r.content)
+                        downloaded = True
+                    except Exception as _req_err:
+                        warnings.warn(f"Direct tile download failed: {_req_err}")
+            
+            if downloaded:
+                return True
+            
         except Exception as e:
             warnings.warn(f"TNM URL path failed: {e}")
         
@@ -137,16 +144,33 @@ class SlopeDataCollector:
                         warnings.warn(f"OpenTopography {demtype} failed: {resp.status_code} {resp.text[:120]}")
         except Exception as e:
             warnings.warn(f"OpenTopography path failed: {e}")
-
-        # As a last resort, try downloading first available TNM staged S3 file if leafmap lists files
+        
+        # Local fallback: search repo data directories for a matching USGS tile
         try:
-            files = leafmap.download_ned(region, out_dir=str(Path(out_path).parent), overwrite=True)
-            if files and Path(files[0]).is_file():
-                # Move/rename to expected path
-                Path(out_path).write_bytes(Path(files[0]).read_bytes())
-                return True
+            tile_n = math.ceil(lat)
+            tile_w = abs(math.floor(lon))
+            tile_str = f"n{tile_n}w{tile_w}"
+            base_data = Path(__file__).parent.parent / 'data'
+            candidates = []
+            for d in [base_data, base_data / 'data']:
+                try:
+                    if d.is_dir():
+                        for p in d.glob(f"**/*{tile_str}*.tif"):
+                            if p.is_file() and ("USGS_13_" in p.name or "USGS_" in p.name):
+                                candidates.append(p)
+                except Exception:
+                    pass
+            if candidates:
+                # Prefer the most recent file
+                candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                try:
+                    Path(out_path).write_bytes(candidates[0].read_bytes())
+                    return True
+                except Exception as _copy_err:
+                    warnings.warn(f"Failed to copy local DEM tile {candidates[0].name}: {_copy_err}")
+            
         except Exception as e:
-            warnings.warn(f"Leafmap staged download fallback failed: {e}")
+            warnings.warn(f"Local DEM fallback failed: {e}")
 
         return False
 
@@ -215,8 +239,8 @@ class SlopeDataCollector:
             Dictionary of terrain attributes
         """
         try:
-            im = Image.open(fp)
-            imarray = np.array(im)
+            with Image.open(fp) as im:
+                imarray = np.array(im)
             if RICHDEM_AVAILABLE:
                 imarray_rd = rd.rdarray(imarray, no_data=-9999)
             else:
@@ -423,7 +447,10 @@ class SlopeDataCollector:
         finally:
             # Clean up
             if dem_file.exists():
-                dem_file.unlink()
+                try:
+                    dem_file.unlink()
+                except Exception:
+                    pass
 
     def _plot_dem(self, lat: float, lon: float, dem_file: str, 
                  save_plots: bool, output_dir: str) -> None:
@@ -582,8 +609,8 @@ class SlopeDataCollector:
                 dem = ds.ReadAsArray()
                 gt = ds.GetGeoTransform()
             except Exception:
-                img = Image.open(str(dem_file))
-                dem = np.array(img)
+                with Image.open(str(dem_file)) as img:
+                    dem = np.array(img)
                 # Construct a best-effort GeoTransform centered at point with pixel size ~10m
                 # This is only used to compute a crop window around the center
                 px_size = 10.0
@@ -646,7 +673,10 @@ class SlopeDataCollector:
             if 'ds' in locals() and ds is not None:
                 ds = None
             if dem_file.exists():
-                dem_file.unlink()
+                try:
+                    dem_file.unlink()
+                except Exception:
+                    pass
 
     def build_interactive_3d(self, lat: float, lon: float,
                               output_dir: str = "temp_dem",
