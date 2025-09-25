@@ -607,7 +607,14 @@ class SlopeDataCollector:
                 try:
                     if GDAL_AVAILABLE:
                         ds = gdal.Open(str(path))
-                        dem = ds.ReadAsArray()
+                        band = ds.GetRasterBand(1)
+                        dem = band.ReadAsArray()
+                        try:
+                            nodata_val = band.GetNoDataValue()
+                            if nodata_val is not None:
+                                dem = np.where(dem == nodata_val, np.nan, dem)
+                        except Exception:
+                            pass
                         gt = ds.GetGeoTransform()
                     else:
                         raise RuntimeError("GDAL not available")
@@ -691,7 +698,8 @@ class SlopeDataCollector:
 
         # Try reuse path → then small fresh download → then reuse with larger crop once
         base_half = half_side_m
-        base_window_m = max(2_000, half_side_m * 4)
+        # Align default DEM window with slope feature first attempt (10 km)
+        base_window_m = max(10_000, half_side_m * 4)
         fresh_path = Path(output_dir) / f"dem_3d_plotly_{lat:.5f}_{lon:.5f}_{base_window_m}.tif"
 
         # 1) Reuse (if present)
