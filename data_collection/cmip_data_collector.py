@@ -175,6 +175,11 @@ class CMIPDataCollector:
                         pr_data = pr_data * seconds_per_month
                         pr_data.attrs['units'] = 'mm/month'
                 
+                # Ensure time is sorted and consolidated
+                try:
+                    pr_data = pr_data.sortby('time')
+                except Exception:
+                    pass
                 return pr_data
             else:
                 print(f"No precipitation data found in {scenario} dataset")

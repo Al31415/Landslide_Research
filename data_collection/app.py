@@ -24,10 +24,30 @@ def _categorize_feature(feature_name: str) -> str:
     else:
         return "Other Features"
 
+def _format_feature_value(feature_name: str, value) -> str:
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return "NA"
+        v = float(value)
+        # CMIP mean flux values are very small; show scientific notation
+        if 'mean_flux' in feature_name:
+            return f"{v:.2e}"
+        # Precipitation metrics in mm – 2 decimals are enough
+        if 'prcp' in feature_name:
+            return f"{v:.2f}"
+        # General numeric formatting
+        if abs(v) >= 1000:
+            return f"{v:,.0f}"
+        if abs(v) >= 1:
+            return f"{v:.2f}"
+        return f"{v:.6f}"
+    except Exception:
+        return str(value)
+
 st.set_page_config(page_title="Stability Predictor", layout="wide")
 
 st.title("US Stability Predictor (CMIP + Meteostat + SSURGO + USGS)")
-st.caption("Version 2.0 - Interactive Map Features | Last Updated: 2025-01-18")
+
 
 def geocode_location(location_name):
     """
@@ -363,10 +383,7 @@ with col2:
                 
                 for feature_name, value in display_features.items():
                     unit = units_dict.get(feature_name, '')
-                    if isinstance(value, (int, float)) and not pd.isna(value):
-                        formatted_value = f"{value:.6f}" if abs(value) < 1 else f"{value:.2f}"
-                    else:
-                        formatted_value = str(value)
+                    formatted_value = _format_feature_value(feature_name, value)
                     
                     feature_data.append({
                         'Feature': feature_name,
@@ -405,22 +422,18 @@ with col2:
                     elif values_array.ndim == 2:
                         contribs = values_array[0, :]
                         exp = shap_values[0]
-                    else:
-                        contribs = values_array.ravel()
-                        exp = shap_values[0]
 
                     col_shap1, col_shap2 = st.columns([1, 1])
 
                     with col_shap1:
                         st.markdown("SHAP Feature Contributions")
                         shap_rows = []
-                        # Pad/truncate to avoid index errors
                         max_len = min(len(REQUIRED_FEATURES), len(contribs))
                         for i in range(max_len):
                             feature = REQUIRED_FEATURES[i]
                             val = float(contribs[i])
                             shap_rows.append({
-                                'Feature': feature,
+                    'Feature': feature,
                                 'SHAP Value': f"{val:.6f}",
                                 'Impact': ("Increases Risk" if val > 0 else ("Decreases Risk" if val < 0 else "Neutral")),
                                 'abs_value': abs(val)
@@ -446,7 +459,7 @@ with col2:
                     for feature_name, value in display_features.items():
                         fallback_rows.append({
                             'Feature': feature_name,
-                            'Value': f"{value:.6f}" if isinstance(value, (int, float)) and not pd.isna(value) else str(value)
+                            'Value': _format_feature_value(feature_name, value)
                         })
                     st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
 
@@ -486,6 +499,17 @@ with col2:
                             "units": units_dict,
                         }
 
+                        # Load feature description context if present
+                        extra_context = ""
+                        try:
+                            import docx
+                            _doc_path = _os.path.join(_os.path.dirname(__file__), '..', 'data', 'Feature Descriptions.docx')
+                            if _os.path.exists(_doc_path):
+                                _doc = docx.Document(_doc_path)
+                                extra_context = "\n\nFeature Descriptions:\n" + "\n".join(p.text for p in _doc.paragraphs if p.text.strip())
+                        except Exception:
+                            pass
+
                         sys_prompt = (
                             "You are a geotechnical assistant. Infer terrain and soil characteristics near the given coordinates "
                             "based on the numeric features and risk prediction. Explain likely soil/rock type, drainage, slope stability factors, "
@@ -493,7 +517,8 @@ with col2:
                         )
                         user_prompt = (
                             "Using this context, summarize what the slope/soil are likely like, including inferred soil/rock type if possible, "
-                            "and any geomorphological cues that would matter for stability."
+                            "and any geomorphological cues that would matter for stability. "
+                            "Note: 'Slope From SSURGO' is soil-map derived and may differ from 'Slope From USGS Elevation Data' which is a pixel-level DEM (richdem) slope."
                         )
 
                         st.subheader("AI Slope & Soil Summary")
@@ -502,7 +527,7 @@ with col2:
                                 model="gpt-4o",
                                 messages=[
                                     {"role": "system", "content": sys_prompt},
-                                    {"role": "user", "content": f"Context: {summary_payload}\n\n{user_prompt}"},
+                                    {"role": "user", "content": f"Context: {summary_payload}{extra_context}\n\n{user_prompt}"},
                                 ],
                                 temperature=0.4,
                                 max_tokens=500,
