@@ -22,7 +22,15 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl deploy --remote-only --build-arg BUILDKIT_INLINE_CACHE=1
+          set -e
+          echo "Starting Fly.io deploy (verbose)"
+          flyctl deploy --remote-only --build-arg BUILDKIT_INLINE_CACHE=1 --verbose || DEPLOY_FAILED=$?
+          if [ -n "$DEPLOY_FAILED" ]; then
+            echo "Deploy failed with code $DEPLOY_FAILED. Dumping status and logs..."
+            flyctl status --app stability-predictor || true
+            flyctl logs --app stability-predictor -n 200 || true
+            exit $DEPLOY_FAILED
+          fi
       
       - name: Health Check
         run: |
