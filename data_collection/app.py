@@ -471,7 +471,7 @@ with col2:
                         fig_int, res_label = collector.build_interactive_3d(
                             lat=float(st.session_state.lat),
                             lon=float(st.session_state.lon),
-                            half_side_m=200
+                            half_side_m=400
                         )
                     fig_int.update_layout(height=520)
                     st.info(f"Interactive 3D resolution used: {res_label}")
