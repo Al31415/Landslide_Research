@@ -1,1 +1,32 @@
-askpass.ps1 
+askpass.ps1
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local data and large artifacts
+data/*.tif
+data/*.tif*
+data/*.nc
+data/data/
+temp_dem/
+DEM_data/
+*.ipynb
+.ipynb_checkpoints/
+
+# Cache
+.cache/
+.mamba/
+micromamba.exe
