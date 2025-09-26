@@ -743,6 +743,12 @@ class SlopeDataCollector:
                     # Replace NaNs with the local mean to keep surface contiguous
                     mean_val = float(np.nanmean(dem_c))
                     dem_c = np.where(np.isfinite(dem_c), dem_c, mean_val)
+                # Sanitize slope colors too
+                if slope_c is None or (not np.isfinite(slope_c).any()):
+                    slope_c = np.zeros_like(dem_c, dtype=float)
+                else:
+                    slope_mean = float(np.nanmean(slope_c))
+                    slope_c = np.where(np.isfinite(slope_c), slope_c, slope_mean)
                 # If essentially flat, add a tiny perturbation to avoid degenerate rendering
                 try:
                     if (np.nanmax(dem_c) - np.nanmin(dem_c)) < 1e-3 or (np.nanstd(dem_c) < 1e-3):
@@ -796,7 +802,8 @@ class SlopeDataCollector:
                     center_z = float(np.nanmean(dem_c))
 
                 surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
-                marker = go.Scatter3d(x=[lon], y=[lat], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
+                # Place marker at center of cropped window coordinates (0,0) in meter axes
+                marker = go.Scatter3d(x=[0], y=[0], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
                 fig = go.Figure(data=[surface, marker])
                 fig.update_scenes(xaxis_title='m East/West', yaxis_title='m North/South', zaxis_title='Elevation (m)')
                 fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
