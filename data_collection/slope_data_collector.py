@@ -156,7 +156,8 @@ class SlopeDataCollector:
                 try:
                     if d.is_dir():
                         for p in d.glob(f"**/*{tile_str}*.tif"):
-                            if p.is_file() and ("USGS_13_" in p.name or "USGS_" in p.name):
+                            # Only accept complete GeoTIFFs, skip partial temp files
+                            if p.is_file() and p.suffix.lower() == '.tif' and not p.name.endswith('.part') and ("USGS_13_" in p.name or "USGS_" in p.name):
                                 candidates.append(p)
                 except Exception:
                     pass
@@ -239,12 +240,33 @@ class SlopeDataCollector:
             Dictionary of terrain attributes
         """
         try:
-            with Image.open(fp) as im:
-                imarray = np.array(im)
-            if RICHDEM_AVAILABLE:
-                imarray_rd = rd.rdarray(imarray, no_data=-9999)
+            # Prefer rasterio to honor GDAL nodata; fallback to PIL
+            arr: np.ndarray
+            nodata_val: Optional[float] = None
+            if RASTERIO_AVAILABLE:
+                with rio.open(fp) as ds:
+                    arr = ds.read(1).astype(np.float32)
+                    try:
+                        nodata_val = ds.nodata
+                    except Exception:
+                        nodata_val = None
             else:
-                imarray_rd = imarray
+                with Image.open(fp) as im:
+                    arr = np.array(im).astype(np.float32)
+            if nodata_val is not None:
+                arr = np.where(arr == nodata_val, np.nan, arr)
+            # Replace remaining NaNs with local mean to avoid holes
+            if not np.isfinite(arr).any():
+                arr = np.zeros_like(arr, dtype=np.float32)
+            else:
+                mean_val = float(np.nanmean(arr))
+                arr = np.where(np.isfinite(arr), arr, mean_val)
+            if RICHDEM_AVAILABLE:
+                no_data_marker = -9999.0
+                rd_input = np.where(np.isfinite(arr), arr, no_data_marker).astype(np.float32)
+                imarray_rd = rd.rdarray(rd_input, no_data=no_data_marker)
+            else:
+                imarray_rd = arr
             attrs = self._compute_terrain_attributes(imarray_rd)
             return attrs
         except Exception as e:
@@ -306,7 +328,7 @@ class SlopeDataCollector:
         Path(output_dir).mkdir(exist_ok=True)
 
         # Try progressively larger regions to ensure the point is within bounds
-        region_sizes_m = [2000, 5000, 10000]
+        region_sizes_m = [2000, 10000, 20000]
 
         last_error: Optional[Exception] = None
         for metres in region_sizes_m:
@@ -357,6 +379,13 @@ class SlopeDataCollector:
 
                 # Extract values at clamped pixel (safe)
                 features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
+                try:
+                    warnings.warn(
+                        f"DEM ok: file={dem_file.name} shape=({h},{w}) at=({clamped_py},{clamped_px}) "
+                        f"slope_minmax=({np.nanmin(attrs['slope_degrees']):.2f},{np.nanmax(attrs['slope_degrees']):.2f})"
+                    )
+                except Exception:
+                    pass
 
                 # Clean up
                 try:
