@@ -747,14 +747,23 @@ class SlopeDataCollector:
                     dem_c = dem_c[::stride, ::stride]
                     slope_c = slope_c[::stride, ::stride]
 
-                # Build lon/lat grids
+                # Build X/Y grids in meters to avoid apparent flattening with degree axes
                 xmin, xmax = xs.start, xs.stop
                 ymin, ymax = ys.start, ys.stop
-                x_idx = np.arange(xmin, xmax, stride)
-                y_idx = np.arange(ymin, ymax, stride)
-                lon_vals = gt[0] + x_idx * gt[1]
-                lat_vals = gt[3] + y_idx * gt[5]
-                X, Y = np.meshgrid(lon_vals, lat_vals)
+                size_x = len(np.arange(xmin, xmax, stride))
+                size_y = len(np.arange(ymin, ymax, stride))
+                try:
+                    m_per_deg_lat = 110540.0
+                    m_per_deg_lon = 111320.0 * math.cos(math.radians(lat))
+                    px_m_x = abs(gt[1]) * m_per_deg_lon if gt is not None else 10.0
+                    px_m_y = abs(gt[5]) * m_per_deg_lat if gt is not None else 10.0
+                except Exception:
+                    px_m_x = px_m_y = 10.0
+                extent_x_m = (size_x - 1) * px_m_x
+                extent_y_m = (size_y - 1) * px_m_y
+                x_lin = np.linspace(-extent_x_m / 2.0, extent_x_m / 2.0, size_x)
+                y_lin = np.linspace(-extent_y_m / 2.0, extent_y_m / 2.0, size_y)
+                X, Y = np.meshgrid(x_lin, y_lin)
 
                 # Resolution label
                 try:
@@ -777,7 +786,7 @@ class SlopeDataCollector:
                 surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
                 marker = go.Scatter3d(x=[lon], y=[lat], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
                 fig = go.Figure(data=[surface, marker])
-                fig.update_scenes(xaxis_title='Longitude (°)', yaxis_title='Latitude (°)', zaxis_title='Elevation (m)')
+                fig.update_scenes(xaxis_title='m East/West', yaxis_title='m North/South', zaxis_title='Elevation (m)')
                 fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
                 return fig, res_label
             finally:
