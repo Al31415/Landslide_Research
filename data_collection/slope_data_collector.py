@@ -81,44 +81,63 @@ class SlopeDataCollector:
 
     def _download_elevation_data(self, region: List[float], out_path: str, lat: float, lon: float) -> bool:
         """
-        Download the NED GeoTIFF tile containing the target lat/lon.
+        Download a NED GeoTIFF for the bounding box. Validate with rasterio.
+        - Try all URLs from leafmap; accept first valid GeoTIFF (>=64x64 and contains target)
+        - Fallback to OpenTopography
+        - Fallback to local .tif (skip .part)
         """
         try:
             url_list = leafmap.download_ned(region, return_url=True)
             if not url_list:
                 warnings.warn("No NED tiles found for region")
                 url_list = []
-            
-            # Compute tile string from target point
-            tile_n = math.floor(lat)
-            tile_w = abs(math.floor(lon))
-            tile_str = f"n{tile_n}w{tile_w}"
-            
-            selected_url = None
-            if url_list:
-                selected_url = next((url for url in url_list if tile_str in url), url_list[0])
-            
-            downloaded = False
-            if selected_url:
-                # Download selected tile using leafmap's helper
+
+            for candidate_url in url_list:
                 try:
-                    leafmap.download_file(selected_url, out_path, overwrite=True)
-                    downloaded = Path(out_path).exists()
-                except Exception:
+                    tmp_fp = str(Path(out_path).with_suffix('.tmp.tif'))
+                    # Download using leafmap helper first
                     try:
+                        leafmap.download_file(candidate_url, tmp_fp, overwrite=True)
+                    except Exception:
                         headers = {'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'}
-                        r = requests.get(selected_url, timeout=180, headers=headers)
+                        r = requests.get(candidate_url, timeout=180, headers=headers)
                         r.raise_for_status()
-                        Path(out_path).write_bytes(r.content)
-                        downloaded = True
-                    except Exception as _req_err:
-                        warnings.warn(f"Direct tile download failed: {_req_err}")
-            
-            if downloaded:
-                return True
-            
+                        Path(tmp_fp).write_bytes(r.content)
+
+                    is_valid = False
+                    if RASTERIO_AVAILABLE:
+                        try:
+                            with rio.open(tmp_fp) as ds_v:
+                                w, h = ds_v.width, ds_v.height
+                                if w >= 64 and h >= 64:
+                                    # Check target is inside bounds
+                                    tr = ds_v.transform
+                                    r, c = rio_rowcol(tr, lon, lat)
+                                    if 0 <= int(c) < w and 0 <= int(r) < h:
+                                        is_valid = True
+                        except Exception as _v:
+                            is_valid = False
+                    else:
+                        # Without rasterio, accept the first download
+                        is_valid = True
+
+                    if is_valid:
+                        Path(out_path).write_bytes(Path(tmp_fp).read_bytes())
+                        try:
+                            Path(tmp_fp).unlink()
+                        except Exception:
+                            pass
+                        return True
+                    else:
+                        try:
+                            Path(tmp_fp).unlink()
+                        except Exception:
+                            pass
+                except Exception as _dl_err:
+                    warnings.warn(f"Leafmap URL failed validation: {_dl_err}")
+
         except Exception as e:
-            warnings.warn(f"TNM URL path failed: {e}")
+            warnings.warn(f"TNM URL list path failed: {e}")
         
         # Try OpenTopography API (USGS NED 10m) with fallback to COP30
         try:
