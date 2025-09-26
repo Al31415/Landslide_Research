@@ -90,7 +90,7 @@ class SlopeDataCollector:
                 url_list = []
             
             # Compute tile string from target point
-            tile_n = math.ceil(lat)
+            tile_n = math.floor(lat)
             tile_w = abs(math.floor(lon))
             tile_str = f"n{tile_n}w{tile_w}"
             
