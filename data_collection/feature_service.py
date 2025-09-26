@@ -195,39 +195,14 @@ class FeatureService:
 			'Deepest Soil Horizon Layer': features['Deepest Soil Horizon Layer'],
 		})
 
-		# USGS (align with playground/test1.py; ensure NED fetched before compute; fallback last)
-		report('USGS NED 10m', 'Computing slope from elevation data (richdem/no-geotransform) with retry...')
+		# USGS slope (robust internal collector to avoid runtime env differences)
+		report('USGS NED 10m', 'Computing slope from internal collector (robust).')
 		deg = np.nan
 		try:
-			if _LEAFMAP_OK and _RICHDEM_OK and _RASTERIO_OK:
-				import math as _m
-				R = 6_378_137.0
-				dn = 100; de = 100
-				dLat = dn / R; dLon = de / (R * _m.cos(_m.pi * lat / 180))
-				latO = lat + dLat * 180 / _m.pi; lonO = lon + dLon * 180 / _m.pi
-				region = [lon, lat, lonO, latO]
-				url = leafmap.download_ned(region, return_url=True)
-				if url:
-					fp = url[0]
-					local_fp = str(Path(self.data_dir) / Path(fp).name)
-					leafmap.download_file(fp, local_fp, overwrite=True)
-					from PIL import Image as _Image
-					im = _Image.open(local_fp)
-					imarray = np.array(im)
-					with _rio.open(local_fp) as ds_:
-						tr = ds_.transform
-						_r, _c = _rowcol(tr, lon, lat)
-					dem_rd2 = _rd.rdarray(imarray, no_data=-9999.0)
-					_slope = _rd.TerrainAttribute(dem_rd2, attrib='slope_degrees')
-					deg = float(_slope[int(_r), int(_c)])
-			if pd.isna(deg):
-				report('USGS NED 10m', 'Fallback to internal NED collector', {})
-				terr = self.usgs.get_terrain_features_for_point(lat, lon)
-				deg = float(terr.get('slope_degrees', np.nan))
-		except Exception:
-			report('USGS NED 10m', 'RichDEM path failed; using internal collector', {})
 			terr = self.usgs.get_terrain_features_for_point(lat, lon)
 			deg = float(terr.get('slope_degrees', np.nan))
+		except Exception:
+			deg = np.nan
 		features['Slope From USGS Elevation Data'] = deg
 		units['Slope From USGS Elevation Data'] = 'degrees'
 		report('USGS NED 10m', 'USGS slope computed using Playground logic.', {
