@@ -278,7 +278,8 @@ with col1:
             map_state = st_folium(
                 fmap,
                 height=420,
-                key=f"folium_click_map_{st.session_state.folium_key}"
+                key=f"folium_click_map_{st.session_state.folium_key}",
+                returned_objects=["last_clicked"]
             )
 
         cols_reload = st.columns([1, 3])
