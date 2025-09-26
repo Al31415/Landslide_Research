@@ -764,23 +764,15 @@ class SlopeDataCollector:
                 if stride > 1:
                     dem_c = dem_c[::stride, ::stride]
                     slope_c = slope_c[::stride, ::stride]
+                size_y, size_x = dem_c.shape
+                # If the cropped window is too small to render meaningfully, trigger a larger crop retry
+                if size_x < 3 or size_y < 3:
+                    raise ValueError("DEM crop too small for 3D rendering")
 
-                # Build X/Y grids in meters to avoid apparent flattening with degree axes
-                xmin, xmax = xs.start, xs.stop
-                ymin, ymax = ys.start, ys.stop
-                size_x = len(np.arange(xmin, xmax, stride))
-                size_y = len(np.arange(ymin, ymax, stride))
-                try:
-                    m_per_deg_lat = 110540.0
-                    m_per_deg_lon = 111320.0 * math.cos(math.radians(lat))
-                    px_m_x = abs(gt[1]) * m_per_deg_lon if gt is not None else 10.0
-                    px_m_y = abs(gt[5]) * m_per_deg_lat if gt is not None else 10.0
-                except Exception:
-                    px_m_x = px_m_y = 10.0
-                extent_x_m = (size_x - 1) * px_m_x
-                extent_y_m = (size_y - 1) * px_m_y
-                x_lin = np.linspace(-extent_x_m / 2.0, extent_x_m / 2.0, size_x)
-                y_lin = np.linspace(-extent_y_m / 2.0, extent_y_m / 2.0, size_y)
+                # Build X/Y grids directly in meters using the requested crop size
+                size_y, size_x = dem_c.shape
+                x_lin = np.linspace(-crop_half_m, crop_half_m, size_x)
+                y_lin = np.linspace(-crop_half_m, crop_half_m, size_y)
                 X, Y = np.meshgrid(x_lin, y_lin)
 
                 # Resolution label
