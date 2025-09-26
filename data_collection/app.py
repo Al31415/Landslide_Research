@@ -477,6 +477,18 @@ with col2:
                     fig_int.update_layout(height=520)
                     st.info(f"Interactive 3D resolution used: {res_label}")
                     st.plotly_chart(fig_int, use_container_width=True)
+                    # Debug diagnostics for DEM and 3D rendering
+                    try:
+                        if hasattr(collector, '_last_debug_usgs') or hasattr(collector, '_last_debug_3d'):
+                            with st.expander("Diagnostics", expanded=False):
+                                if hasattr(collector, '_last_debug_usgs'):
+                                    st.markdown("USGS DEM")
+                                    st.json(getattr(collector, '_last_debug_usgs'))
+                                if hasattr(collector, '_last_debug_3d'):
+                                    st.markdown("3D Renderer")
+                                    st.json(getattr(collector, '_last_debug_3d'))
+                    except Exception:
+                        pass
                 except Exception as inter_err:
                     st.warning(f"Interactive 3D failed: {inter_err}")
 
