@@ -735,9 +735,21 @@ class SlopeDataCollector:
                     dy, dx = np.gradient(dem_c)
                     slope_c = np.rad2deg(np.arctan(np.sqrt(dx*dx + dy*dy)))
 
-                # Validate content
-                if (not np.isfinite(dem_c).any()) or ((np.nanmax(dem_c) - np.nanmin(dem_c)) < 1e-3) or (np.nanstd(dem_c) < 1e-3):
-                    raise ValueError("DEM window appears flat or invalid")
+                # Validate and sanitize content instead of failing hard
+                if not np.isfinite(dem_c).any():
+                    # All values invalid; render a flat plane with tiny noise so it still displays
+                    dem_c = np.zeros_like(dem_c, dtype=float)
+                else:
+                    # Replace NaNs with the local mean to keep surface contiguous
+                    mean_val = float(np.nanmean(dem_c))
+                    dem_c = np.where(np.isfinite(dem_c), dem_c, mean_val)
+                # If essentially flat, add a tiny perturbation to avoid degenerate rendering
+                try:
+                    if (np.nanmax(dem_c) - np.nanmin(dem_c)) < 1e-3 or (np.nanstd(dem_c) < 1e-3):
+                        rng = np.random.default_rng(0)
+                        dem_c = dem_c + 1e-3 * rng.standard_normal(dem_c.shape)
+                except Exception:
+                    pass
 
                 # Downsample
                 size_y, size_x = dem_c.shape
