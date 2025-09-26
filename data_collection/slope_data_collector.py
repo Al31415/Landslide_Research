@@ -398,13 +398,18 @@ class SlopeDataCollector:
 
                 # Extract values at clamped pixel (safe)
                 features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
+                # Store debug details for callers (e.g., Streamlit UI)
                 try:
-                    warnings.warn(
-                        f"DEM ok: file={dem_file.name} shape=({h},{w}) at=({clamped_py},{clamped_px}) "
-                        f"slope_minmax=({np.nanmin(attrs['slope_degrees']):.2f},{np.nanmax(attrs['slope_degrees']):.2f})"
-                    )
+                    self._last_debug_usgs = {
+                        'dem_file': str(dem_file.name),
+                        'dem_shape': (int(h), int(w)),
+                        'pixel_at': (int(clamped_py), int(clamped_px)),
+                        'slope_min': float(np.nanmin(attrs.get('slope_degrees'))),
+                        'slope_max': float(np.nanmax(attrs.get('slope_degrees'))),
+                        'region_m': int(metres),
+                    }
                 except Exception:
-                    pass
+                    self._last_debug_usgs = {'dem_file': str(dem_file.name)}
 
                 # Clean up
                 try:
@@ -847,6 +852,21 @@ class SlopeDataCollector:
                 fig = go.Figure(data=[surface, marker])
                 fig.update_scenes(xaxis_title='m East/West', yaxis_title='m North/South', zaxis_title='Elevation (m)')
                 fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
+                # Store debug info for callers
+                try:
+                    self._last_debug_3d = {
+                        'dem_path': str(path.name),
+                        'crop_half_m': int(crop_half_m),
+                        'dem_shape': (int(h), int(w)),
+                        'crop_shape': (int(size_y), int(size_x)),
+                        'stride': int(stride),
+                        'dem_min': float(np.nanmin(dem_c)),
+                        'dem_max': float(np.nanmax(dem_c)),
+                        'slope_min': float(np.nanmin(slope_c)),
+                        'slope_max': float(np.nanmax(slope_c)),
+                    }
+                except Exception:
+                    self._last_debug_3d = {'dem_path': str(path.name)}
                 return fig, res_label
             finally:
                 if 'ds' in locals() and ds is not None:
