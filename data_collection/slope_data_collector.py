@@ -129,11 +129,9 @@ class SlopeDataCollector:
             for i, candidate_url in enumerate(url_list):
                 try:
                     tmp_fp = str(Path(out_path).with_suffix('.tmp.tif'))
-                    self._debug_record('_download_elevation_data', f'url_attempt_{i}', {
-                        'url': candidate_url,
-                    })
+                    self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'url': candidate_url})
 
-                    # Download using leafmap helper first
+                    # Download using leafmap; fallback to requests
                     try:
                         leafmap.download_file(candidate_url, tmp_fp, overwrite=True)
                         self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'download_method': 'leafmap'})
@@ -141,9 +139,10 @@ class SlopeDataCollector:
                         self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'download_method': 'requests', 'error': str(dl_err)})
                         headers = {'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'}
                         r = requests.get(candidate_url, timeout=180, headers=headers)
-                r.raise_for_status()
+                        r.raise_for_status()
                         Path(tmp_fp).write_bytes(r.content)
 
+                    # Validate
                     is_valid = False
                     w = h = 0
                     rc_ok = False
@@ -157,7 +156,6 @@ class SlopeDataCollector:
                                 except Exception:
                                     nodata_val = None
                                 if w >= 64 and h >= 64:
-                                    # Check target is inside bounds
                                     tr = ds_v.transform
                                     r, c = rio_rowcol(tr, lon, lat)
                                     rc_ok = (0 <= int(c) < w and 0 <= int(r) < h)
@@ -167,7 +165,6 @@ class SlopeDataCollector:
                             is_valid = False
                             self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'rasterio_error': str(_v)})
                     else:
-                        # Without rasterio, accept the first download
                         is_valid = True
 
                     if is_valid:
@@ -190,7 +187,7 @@ class SlopeDataCollector:
                             Path(tmp_fp).unlink()
                         except Exception:
                             pass
-                return True
+                        return True
                     else:
                         debug_attempts.append({'url': candidate_url, 'validated': False, 'shape': (int(h), int(w)), 'rowcol_in_bounds': rc_ok})
                         self._debug_record('_download_elevation_data', f'url_reject_{i}', {
@@ -699,7 +696,7 @@ class SlopeDataCollector:
             # Clean up
             if dem_file.exists():
                 try:
-                dem_file.unlink()
+                    dem_file.unlink()
                 except Exception:
                     pass
 
@@ -711,10 +708,10 @@ class SlopeDataCollector:
         h = w = None
         try:
             if GDAL_AVAILABLE:
-        ds = gdal.Open(dem_file)
-        dem = ds.ReadAsArray()
-        gt = ds.GetGeoTransform()
-        h, w = dem.shape
+                ds = gdal.Open(dem_file)
+                dem = ds.ReadAsArray()
+                gt = ds.GetGeoTransform()
+                h, w = dem.shape
             elif RASTERIO_AVAILABLE:
                 with rio.open(dem_file) as ds_r:
                     dem = ds_r.read(1)
@@ -778,10 +775,10 @@ class SlopeDataCollector:
         h = w = None
         try:
             if GDAL_AVAILABLE:
-        ds = gdal.Open(dem_file)
-        dem = ds.ReadAsArray()
-        gt = ds.GetGeoTransform()
-        h, w = dem.shape
+                ds = gdal.Open(dem_file)
+                dem = ds.ReadAsArray()
+                gt = ds.GetGeoTransform()
+                h, w = dem.shape
             elif RASTERIO_AVAILABLE:
                 with rio.open(dem_file) as ds_r:
                     dem = ds_r.read(1)
@@ -861,7 +858,7 @@ class SlopeDataCollector:
                 gt = ds.GetGeoTransform()
             except Exception:
                 with Image.open(str(dem_file)) as img:
-                dem = np.array(img)
+                    dem = np.array(img)
                 # Construct a best-effort GeoTransform centered at point with pixel size ~10m
                 # This is only used to compute a crop window around the center
                 px_size = 10.0
@@ -951,7 +948,7 @@ class SlopeDataCollector:
                 ds = None
             if dem_file.exists():
                 try:
-                dem_file.unlink()
+                    dem_file.unlink()
                 except Exception:
                     pass
 
@@ -1006,17 +1003,17 @@ class SlopeDataCollector:
                             'max': float(np.nanmax(dem)) if dem.size else None,
                         })
                 elif GDAL_AVAILABLE:
-                        ds = gdal.Open(str(path))
-                        band = ds.GetRasterBand(1)
+                    ds = gdal.Open(str(path))
+                    band = ds.GetRasterBand(1)
                     dem = band.ReadAsArray().astype(np.float32)
-                        try:
-                            nodata_val = band.GetNoDataValue()
-                            if nodata_val is not None:
-                                dem = np.where(dem == nodata_val, np.nan, dem)
-                        except Exception:
-                            pass
+                    try:
+                        nodata_val = band.GetNoDataValue()
+                        if nodata_val is not None:
+                            dem = np.where(dem == nodata_val, np.nan, dem)
+                    except Exception:
+                        pass
                     dem = np.where(dem <= -1e5, np.nan, dem)
-                        gt = ds.GetGeoTransform()
+                    gt = ds.GetGeoTransform()
                     self._debug_record('build_interactive_3d', 'read_gdal', {
                         'path': path.name,
                         'shape': (int(dem.shape[0]), int(dem.shape[1])),
@@ -1024,7 +1021,7 @@ class SlopeDataCollector:
                         'min': float(np.nanmin(dem)) if dem.size else None,
                         'max': float(np.nanmax(dem)) if dem.size else None,
                     })
-                    else:
+                else:
                     img = Image.open(str(path))
                     dem = np.array(img).astype(np.float32)
                     dem = np.where(dem <= -1e5, np.nan, dem)
