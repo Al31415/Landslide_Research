@@ -1153,6 +1153,9 @@ class SlopeDataCollector:
                     connectgaps=True,
                     cmin=float(np.nanmin(slope_c)),
                     cmax=float(np.nanmax(slope_c)),
+                    contours=dict(
+                        z=dict(show=True, usecolormap=False, color='rgba(0,0,0,0.35)', width=1)
+                    ),
                 )
                 # Place marker at center of cropped window coordinates (0,0) in meter axes; lift it slightly above surface
                 marker = go.Scatter3d(x=[0], y=[0], z=[center_z + 0.5], mode='markers', marker=dict(size=6, color='red'), name='Target')
@@ -1177,6 +1180,13 @@ class SlopeDataCollector:
                     ),
                     uirevision=True,
                 )
+                # Save an HTML snapshot for external inspection
+                html_path = None
+                try:
+                    html_path = Path(output_dir) / f"interactive_3d_{lat:.5f}_{lon:.5f}.html"
+                    fig.write_html(str(html_path))
+                except Exception:
+                    html_path = None
                 # Store debug info for callers
                 try:
                     self._last_debug_3d = {
@@ -1195,6 +1205,13 @@ class SlopeDataCollector:
                             'dem': int(np.isnan(dem_c).sum()),
                             'slope': int(np.isnan(slope_c).sum()),
                         },
+                        'scene_ranges': {
+                            'x': [-int(crop_half_m), int(crop_half_m)],
+                            'y': [-int(crop_half_m), int(crop_half_m)],
+                            'z': [zmin, zmax],
+                        },
+                        'camera_eye': {'x': 1.6, 'y': 1.6, 'z': 0.8},
+                        'html_path': str(html_path) if html_path else None,
                     }
                 except Exception:
                     self._last_debug_3d = {'dem_path': str(path.name)}

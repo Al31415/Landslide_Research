@@ -504,7 +504,23 @@ with col2:
                                 st.json(getattr(collector, '_last_dem_read'))
                             if hasattr(collector, '_last_debug_3d'):
                                 st.markdown("3D Renderer (Last)")
-                                st.json(getattr(collector, '_last_debug_3d'))
+                                _dbg3d = getattr(collector, '_last_debug_3d')
+                                st.json(_dbg3d)
+                                try:
+                                    html_path = _dbg3d.get('html_path') if isinstance(_dbg3d, dict) else None
+                                    if html_path and os.path.exists(html_path):
+                                        st.caption(f"Saved 3D HTML: {html_path}")
+                                        with open(html_path, 'r', encoding='utf-8') as _f:
+                                            _html = _f.read()
+                                        st.download_button(
+                                            label="Download 3D HTML",
+                                            data=_html,
+                                            file_name=os.path.basename(html_path),
+                                            mime="text/html",
+                                        )
+                                        components.html(_html, height=600, scrolling=True)
+                                except Exception as _emb_err:
+                                    st.caption(f"Preview unavailable: {_emb_err}")
                             # Full debug log with all calls
                             if hasattr(collector, '_debug_log'):
                                 st.markdown("### Full Debug Log")
