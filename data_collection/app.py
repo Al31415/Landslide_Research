@@ -465,6 +465,7 @@ with col2:
                     st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
 
                 # Interactive 3D (auto-rendered)
+                collector = None
                 try:
                     from slope_data_collector import SlopeDataCollector
                     collector = SlopeDataCollector()
@@ -477,23 +478,31 @@ with col2:
                     fig_int.update_layout(height=520)
                     st.info(f"Interactive 3D resolution used: {res_label}")
                     st.plotly_chart(fig_int, use_container_width=True)
-                    # Debug diagnostics for DEM and 3D rendering
-                    try:
-                        if hasattr(collector, '_last_debug_usgs') or hasattr(collector, '_last_debug_3d') or hasattr(collector, '_last_debug_download'):
-                            with st.expander("Diagnostics", expanded=False):
-                                if hasattr(collector, '_last_debug_usgs'):
-                                    st.markdown("USGS DEM")
-                                    st.json(getattr(collector, '_last_debug_usgs'))
-                                if hasattr(collector, '_last_debug_3d'):
-                                    st.markdown("3D Renderer")
-                                    st.json(getattr(collector, '_last_debug_3d'))
-                                if hasattr(collector, '_last_debug_download'):
-                                    st.markdown("Download")
-                                    st.json(getattr(collector, '_last_debug_download'))
-                    except Exception:
-                        pass
                 except Exception as inter_err:
                     st.warning(f"Interactive 3D failed: {inter_err}")
+                # Always show diagnostics block (whether 3D rendered or not)
+                try:
+                    if collector is not None:
+                        with st.expander("Diagnostics", expanded=False):
+                            st.markdown("Selected Location")
+                            st.json({
+                                'lat': float(st.session_state.lat),
+                                'lon': float(st.session_state.lon),
+                            })
+                            if hasattr(collector, '_last_debug_download'):
+                                st.markdown("Download")
+                                st.json(getattr(collector, '_last_debug_download'))
+                            if hasattr(collector, '_last_debug_usgs'):
+                                st.markdown("USGS DEM")
+                                st.json(getattr(collector, '_last_debug_usgs'))
+                            if hasattr(collector, '_last_debug_3d'):
+                                st.markdown("3D Renderer")
+                                st.json(getattr(collector, '_last_debug_3d'))
+                            if hasattr(collector, '_last_dem_read'):
+                                st.markdown("DEM Read")
+                                st.json(getattr(collector, '_last_dem_read'))
+                except Exception:
+                    pass
 
                 # AI-Assisted Slope/Soil Summary (auto, uses OpenAI 4o if key present)
                 try:
