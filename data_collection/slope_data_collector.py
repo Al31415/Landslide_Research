@@ -87,6 +87,7 @@ class SlopeDataCollector:
         - Fallback to local .tif (skip .part)
         """
         try:
+            debug_attempts: List[Dict[str, object]] = []
             url_list = leafmap.download_ned(region, return_url=True)
             if not url_list:
                 warnings.warn("No NED tiles found for region")
@@ -105,6 +106,8 @@ class SlopeDataCollector:
                         Path(tmp_fp).write_bytes(r.content)
 
                     is_valid = False
+                    w = h = 0
+                    rc_ok = False
                     if RASTERIO_AVAILABLE:
                         try:
                             with rio.open(tmp_fp) as ds_v:
@@ -113,7 +116,8 @@ class SlopeDataCollector:
                                     # Check target is inside bounds
                                     tr = ds_v.transform
                                     r, c = rio_rowcol(tr, lon, lat)
-                                    if 0 <= int(c) < w and 0 <= int(r) < h:
+                                    rc_ok = (0 <= int(c) < w and 0 <= int(r) < h)
+                                    if rc_ok:
                                         is_valid = True
                         except Exception as _v:
                             is_valid = False
@@ -124,20 +128,36 @@ class SlopeDataCollector:
                     if is_valid:
                         Path(out_path).write_bytes(Path(tmp_fp).read_bytes())
                         try:
+                            self._last_debug_download = {
+                                'url': candidate_url,
+                                'validated': True,
+                                'shape': (int(h), int(w)),
+                                'rowcol_in_bounds': rc_ok,
+                                'region_used': list(map(float, region)),
+                            }
+                        except Exception:
+                            pass
+                        try:
                             Path(tmp_fp).unlink()
                         except Exception:
                             pass
                         return True
                     else:
+                        debug_attempts.append({'url': candidate_url, 'validated': False, 'shape': (int(h), int(w))})
                         try:
                             Path(tmp_fp).unlink()
                         except Exception:
                             pass
                 except Exception as _dl_err:
                     warnings.warn(f"Leafmap URL failed validation: {_dl_err}")
+                    debug_attempts.append({'url': candidate_url, 'error': str(_dl_err)})
 
         except Exception as e:
             warnings.warn(f"TNM URL list path failed: {e}")
+            try:
+                self._last_debug_download = {'error': str(e), 'region_used': list(map(float, region))}
+            except Exception:
+                pass
         
         # Try OpenTopography API (USGS NED 10m) with fallback to COP30
         try:
@@ -185,12 +205,27 @@ class SlopeDataCollector:
                 candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                 try:
                     Path(out_path).write_bytes(candidates[0].read_bytes())
+                    try:
+                        self._last_debug_download = {
+                            'url': 'local_fallback',
+                            'validated': True,
+                            'shape': None,
+                            'rowcol_in_bounds': None,
+                            'region_used': list(map(float, region)),
+                            'local_file': candidates[0].name,
+                        }
+                    except Exception:
+                        pass
                     return True
                 except Exception as _copy_err:
                     warnings.warn(f"Failed to copy local DEM tile {candidates[0].name}: {_copy_err}")
             
         except Exception as e:
             warnings.warn(f"Local DEM fallback failed: {e}")
+        try:
+            self._last_debug_download = {'attempts': debug_attempts, 'region_used': list(map(float, region))}
+        except Exception:
+            pass
 
         return False
 
