@@ -479,7 +479,7 @@ with col2:
                     st.plotly_chart(fig_int, use_container_width=True)
                     # Debug diagnostics for DEM and 3D rendering
                     try:
-                        if hasattr(collector, '_last_debug_usgs') or hasattr(collector, '_last_debug_3d'):
+                        if hasattr(collector, '_last_debug_usgs') or hasattr(collector, '_last_debug_3d') or hasattr(collector, '_last_debug_download'):
                             with st.expander("Diagnostics", expanded=False):
                                 if hasattr(collector, '_last_debug_usgs'):
                                     st.markdown("USGS DEM")
@@ -487,6 +487,9 @@ with col2:
                                 if hasattr(collector, '_last_debug_3d'):
                                     st.markdown("3D Renderer")
                                     st.json(getattr(collector, '_last_debug_3d'))
+                                if hasattr(collector, '_last_debug_download'):
+                                    st.markdown("Download")
+                                    st.json(getattr(collector, '_last_debug_download'))
                     except Exception:
                         pass
                 except Exception as inter_err:
