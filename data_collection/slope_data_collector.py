@@ -274,12 +274,24 @@ class SlopeDataCollector:
                     arr = np.array(im).astype(np.float32)
             if nodata_val is not None:
                 arr = np.where(arr == nodata_val, np.nan, arr)
+            # Also treat extreme negative sentinels as nodata
+            try:
+                arr = np.where(arr <= -1e5, np.nan, arr)
+            except Exception:
+                pass
             # Replace remaining NaNs with local mean to avoid holes
             if not np.isfinite(arr).any():
                 arr = np.zeros_like(arr, dtype=np.float32)
             else:
                 mean_val = float(np.nanmean(arr))
                 arr = np.where(np.isfinite(arr), arr, mean_val)
+            # Reject arrays that are mostly nodata to trigger retries upstream
+            try:
+                finite_ratio = float(np.isfinite(arr).sum()) / float(arr.size)
+                if finite_ratio < 0.1:
+                    raise RuntimeError("DEM content mostly nodata")
+            except Exception:
+                pass
             if RICHDEM_AVAILABLE:
                 no_data_marker = -9999.0
                 rd_input = np.where(np.isfinite(arr), arr, no_data_marker).astype(np.float32)
@@ -669,6 +681,20 @@ class SlopeDataCollector:
                 px_size = 10.0
                 gt = (lon - (dem.shape[1] * px_size)/2.0, px_size, 0, lat + (dem.shape[0] * px_size)/2.0, 0, -px_size)
             h, w = dem.shape
+            # Sanitize raw DEM for nodata sentinels and fill holes
+            try:
+                dem = dem.astype(np.float32)
+            except Exception:
+                pass
+            try:
+                dem = np.where(dem <= -1e5, np.nan, dem)
+            except Exception:
+                pass
+            if not np.isfinite(dem).any():
+                dem = np.zeros_like(dem, dtype=np.float32)
+            else:
+                mean_val_dem = float(np.nanmean(dem))
+                dem = np.where(np.isfinite(dem), dem, mean_val_dem)
 
             # Compute slope on full DEM, then crop consistent windows
             attrs = self._load_dem_and_attributes(str(dem_file))
@@ -678,6 +704,18 @@ class SlopeDataCollector:
             ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
             dem_c = dem[ys, xs]
             slope_c = slope[ys, xs]
+
+            # If crop too small/flat, try a larger crop once
+            try:
+                size_y_chk, size_x_chk = dem_c.shape
+                if size_x_chk < 3 or size_y_chk < 3 or (
+                    (np.nanstd(dem_c) < 1e-6) and (np.nanstd(slope_c) < 1e-6)
+                ):
+                    ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=max(half_side_m * 2, 800))
+                    dem_c = dem[ys, xs]
+                    slope_c = slope[ys, xs]
+            except Exception:
+                pass
 
             # Downsample to keep mesh reasonable (<= 150 x 150)
             size_y, size_x = dem_c.shape
@@ -753,19 +791,23 @@ class SlopeDataCollector:
                     if GDAL_AVAILABLE:
                         ds = gdal.Open(str(path))
                         band = ds.GetRasterBand(1)
-                        dem = band.ReadAsArray()
+                        dem = band.ReadAsArray().astype(np.float32)
                         try:
                             nodata_val = band.GetNoDataValue()
                             if nodata_val is not None:
                                 dem = np.where(dem == nodata_val, np.nan, dem)
                         except Exception:
                             pass
+                        # Treat extreme negative sentinel as nodata
+                        dem = np.where(dem <= -1e5, np.nan, dem)
                         gt = ds.GetGeoTransform()
                     else:
                         raise RuntimeError("GDAL not available")
                 except Exception:
                     img = Image.open(str(path))
-                    dem = np.array(img)
+                    dem = np.array(img).astype(np.float32)
+                    # Treat extreme negative sentinel as nodata
+                    dem = np.where(dem <= -1e5, np.nan, dem)
                     # Approx geotransform with ~10 m pixels
                     px_m = 10.0
                     deg_per_m_lat = 1.0 / 110540.0
