@@ -1,6 +1,6 @@
 # Landslide Research Analysis 
 This repository houses datasets from CMIP6 (CESM2), NOAA, SSURGO, and USGS. It benchmarks models for landslide prediction, identifies the most influential features, and uses the top-performing models to project how landslide risk will evolve as climate-driven changes in precipitation intensify.
-
+Application can be found at https://stability-predictor.fly.dev/
 ## Package Structure
 
 ```
@@ -214,6 +214,7 @@ The complete pipeline consists of 6 steps:
 - scikit-learn >= 1.0.0
 - matplotlib >= 3.5.0
 - seaborn >= 0.11.0
+
 
 
 
