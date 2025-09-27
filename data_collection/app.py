@@ -484,6 +484,14 @@ with col2:
                     st.info(f"Interactive 3D resolution used: {res_label}")
                     if use_html_renderer:
                         try:
+                            # Match app theme inside iframe
+                            fig_int.update_layout(
+                                paper_bgcolor='black',
+                                plot_bgcolor='black',
+                                font=dict(color='white'),
+                                margin=dict(l=10, r=10, t=40, b=10),
+                                title=dict(pad=dict(t=6, b=6), x=0.02, xanchor='left')
+                            )
                             # Generate Plotly HTML without outer <html> to embed cleanly
                             html_core = fig_int.to_html(
                                 full_html=False,
@@ -495,11 +503,11 @@ with col2:
                             # Wrap with CSS to remove borders/margins and blend with app
                             html_wrapped = (
                                 "<style>\n"
-                                "html,body{margin:0;padding:0;background:transparent;height:100%;}\n"
-                                ".plotly,.js-plotly-plot,.plot-container{margin:0!important;padding:0!important;}\n"
+                                "html,body{margin:0;padding:0;background:#000;height:100%;}\n"
+                                ".plotly,.js-plotly-plot,.plot-container{margin:0!important;padding:0!important;height:100%!important;}\n"
                                 ".modebar{display:none!important;}\n"
                                 "</style>\n"
-                                f"<div style='width:100%;height:600px;'>{html_core}</div>"
+                                f"<div style='width:100%;height:600px;background:#000;'>{html_core}</div>"
                             )
                             components.html(html_wrapped, height=600, scrolling=False)
                         except Exception as _html_err:
