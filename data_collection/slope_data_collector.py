@@ -8,7 +8,7 @@ import os
 import random
 import requests
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import warnings
 
 import geopy.distance
@@ -58,7 +58,7 @@ class SlopeDataCollector:
     ):
         """
         Initialize the slope data collector.
-        
+
         Args:
             shapefile_path: Path to US border shapefile (optional)
             max_distance_km: Maximum distance for point generation
@@ -70,7 +70,7 @@ class SlopeDataCollector:
         self.lat_range = lat_range
         self.lon_range = lon_range
         self.ned_resolution_m = ned_resolution_m
-        
+
         # Initialize state polygons if shapefile provided
         self.state_polygons = {}
         if shapefile_path:
@@ -79,6 +79,27 @@ class SlopeDataCollector:
             except Exception as e:
                 warnings.warn(f"Could not load shapefile: {e}")
 
+        # Debug log container
+        self._debug_log = {
+            'init': {
+                'richdem_available': RICHDEM_AVAILABLE,
+                'gdal_available': GDAL_AVAILABLE,
+                'rasterio_available': RASTERIO_AVAILABLE,
+                'ned_resolution_m': self.ned_resolution_m,
+            },
+            'calls': [],
+        }
+
+    def _debug_record(self, method: str, step: str, data: Dict[str, Any]) -> None:
+        """Record debug information for a method step."""
+        call_entry = {
+            'method': method,
+            'step': step,
+            'timestamp': str(pd.Timestamp.now()),
+            'data': data,
+        }
+        self._debug_log['calls'].append(call_entry)
+
     def _download_elevation_data(self, region: List[float], out_path: str, lat: float, lon: float) -> bool:
         """
         Download a NED GeoTIFF for the bounding box. Validate with rasterio.
@@ -86,20 +107,38 @@ class SlopeDataCollector:
         - Fallback to OpenTopography
         - Fallback to local .tif (skip .part)
         """
+        self._debug_record('_download_elevation_data', 'start', {
+            'region': list(map(float, region)),
+            'target_lat': float(lat),
+            'target_lon': float(lon),
+            'out_path': str(out_path),
+        })
+
         try:
             debug_attempts: List[Dict[str, object]] = []
             url_list = leafmap.download_ned(region, return_url=True)
+            self._debug_record('_download_elevation_data', 'leafmap_urls', {
+                'url_count': len(url_list),
+                'urls': url_list[:3] if url_list else [],  # First 3 for brevity
+            })
+
             if not url_list:
                 warnings.warn("No NED tiles found for region")
                 url_list = []
 
-            for candidate_url in url_list:
+            for i, candidate_url in enumerate(url_list):
                 try:
                     tmp_fp = str(Path(out_path).with_suffix('.tmp.tif'))
+                    self._debug_record('_download_elevation_data', f'url_attempt_{i}', {
+                        'url': candidate_url,
+                    })
+
                     # Download using leafmap helper first
                     try:
                         leafmap.download_file(candidate_url, tmp_fp, overwrite=True)
-                    except Exception:
+                        self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'download_method': 'leafmap'})
+                    except Exception as dl_err:
+                        self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'download_method': 'requests', 'error': str(dl_err)})
                         headers = {'User-Agent': 'LandslidePredictor/1.0 (+https://github.com/)'}
                         r = requests.get(candidate_url, timeout=180, headers=headers)
                         r.raise_for_status()
@@ -108,10 +147,15 @@ class SlopeDataCollector:
                     is_valid = False
                     w = h = 0
                     rc_ok = False
+                    nodata_val = None
                     if RASTERIO_AVAILABLE:
                         try:
                             with rio.open(tmp_fp) as ds_v:
                                 w, h = ds_v.width, ds_v.height
+                                try:
+                                    nodata_val = ds_v.nodata
+                                except Exception:
+                                    nodata_val = None
                                 if w >= 64 and h >= 64:
                                     # Check target is inside bounds
                                     tr = ds_v.transform
@@ -121,29 +165,39 @@ class SlopeDataCollector:
                                         is_valid = True
                         except Exception as _v:
                             is_valid = False
+                            self._debug_record('_download_elevation_data', f'url_attempt_{i}', {'rasterio_error': str(_v)})
                     else:
                         # Without rasterio, accept the first download
                         is_valid = True
 
                     if is_valid:
                         Path(out_path).write_bytes(Path(tmp_fp).read_bytes())
-                        try:
-                            self._last_debug_download = {
-                                'url': candidate_url,
-                                'validated': True,
-                                'shape': (int(h), int(w)),
-                                'rowcol_in_bounds': rc_ok,
-                                'region_used': list(map(float, region)),
-                            }
-                        except Exception:
-                            pass
+                        self._last_debug_download = {
+                            'url': candidate_url,
+                            'validated': True,
+                            'shape': (int(h), int(w)),
+                            'rowcol_in_bounds': rc_ok,
+                            'region_used': list(map(float, region)),
+                            'nodata': float(nodata_val) if nodata_val is not None else None,
+                        }
+                        self._debug_record('_download_elevation_data', f'url_success_{i}', {
+                            'validated': True,
+                            'shape': (int(h), int(w)),
+                            'rowcol_in_bounds': rc_ok,
+                            'nodata': float(nodata_val) if nodata_val is not None else None,
+                        })
                         try:
                             Path(tmp_fp).unlink()
                         except Exception:
                             pass
                         return True
                     else:
-                        debug_attempts.append({'url': candidate_url, 'validated': False, 'shape': (int(h), int(w))})
+                        debug_attempts.append({'url': candidate_url, 'validated': False, 'shape': (int(h), int(w)), 'rowcol_in_bounds': rc_ok})
+                        self._debug_record('_download_elevation_data', f'url_reject_{i}', {
+                            'reason': 'validation_failed',
+                            'shape': (int(h), int(w)),
+                            'rowcol_in_bounds': rc_ok,
+                        })
                         try:
                             Path(tmp_fp).unlink()
                         except Exception:
@@ -151,21 +205,25 @@ class SlopeDataCollector:
                 except Exception as _dl_err:
                     warnings.warn(f"Leafmap URL failed validation: {_dl_err}")
                     debug_attempts.append({'url': candidate_url, 'error': str(_dl_err)})
+                    self._debug_record('_download_elevation_data', f'url_error_{i}', {'error': str(_dl_err)})
 
         except Exception as e:
             warnings.warn(f"TNM URL list path failed: {e}")
-            try:
-                self._last_debug_download = {'error': str(e), 'region_used': list(map(float, region))}
-            except Exception:
-                pass
+            self._last_debug_download = {'error': str(e), 'region_used': list(map(float, region))}
+            self._debug_record('_download_elevation_data', 'error', {'error': str(e)})
         
         # Try OpenTopography API (USGS NED 10m) with fallback to COP30
+        self._debug_record('_download_elevation_data', 'opentopo_start', {'region': list(map(float, region))})
         try:
             min_lon, min_lat, max_lon, max_lat = region[0], region[1], region[2], region[3]
             api_key = os.environ.get("OPENTOPO_API_KEY")
             if api_key:
                 ot_base = "https://portal.opentopography.org/API/globaldem"
                 for demtype in ("USGSNED10m", "COP30"):
+                    self._debug_record('_download_elevation_data', f'opentopo_attempt_{demtype}', {
+                        'demtype': demtype,
+                        'region': [min_lon, min_lat, max_lon, max_lat],
+                    })
                     params = {
                         "demtype": demtype,
                         "south": f"{min_lat}",
@@ -178,13 +236,28 @@ class SlopeDataCollector:
                     resp = requests.get(ot_base, params=params, timeout=180)
                     if resp.status_code == 200 and resp.content:
                         Path(out_path).write_bytes(resp.content)
+                        self._last_debug_download = {
+                            'url': f'opentopography_{demtype}',
+                            'validated': True,
+                            'region_used': list(map(float, region)),
+                        }
+                        self._debug_record('_download_elevation_data', f'opentopo_success_{demtype}', {
+                            'status_code': resp.status_code,
+                            'content_length': len(resp.content),
+                        })
                         return True
                     else:
                         warnings.warn(f"OpenTopography {demtype} failed: {resp.status_code} {resp.text[:120]}")
+                        self._debug_record('_download_elevation_data', f'opentopo_fail_{demtype}', {
+                            'status_code': resp.status_code,
+                            'response_preview': resp.text[:120] if resp.text else '',
+                        })
         except Exception as e:
             warnings.warn(f"OpenTopography path failed: {e}")
-        
+            self._debug_record('_download_elevation_data', 'opentopo_error', {'error': str(e)})
+
         # Local fallback: search repo data directories for a matching USGS tile
+        self._debug_record('_download_elevation_data', 'local_fallback_start', {'region': list(map(float, region))})
         try:
             tile_n = math.ceil(lat)
             tile_w = abs(math.floor(lon))
@@ -200,30 +273,44 @@ class SlopeDataCollector:
                                 candidates.append(p)
                 except Exception:
                     pass
+            self._debug_record('_download_elevation_data', 'local_candidates', {
+                'tile_str': tile_str,
+                'candidate_count': len(candidates),
+                'candidates': [p.name for p in candidates],
+            })
             if candidates:
                 # Prefer the most recent file
                 candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                 try:
                     Path(out_path).write_bytes(candidates[0].read_bytes())
-                    try:
-                        self._last_debug_download = {
-                            'url': 'local_fallback',
-                            'validated': True,
-                            'shape': None,
-                            'rowcol_in_bounds': None,
-                            'region_used': list(map(float, region)),
-                            'local_file': candidates[0].name,
-                        }
-                    except Exception:
-                        pass
+                    self._last_debug_download = {
+                        'url': 'local_fallback',
+                        'validated': True,
+                        'region_used': list(map(float, region)),
+                        'local_file': candidates[0].name,
+                        'local_path': str(candidates[0]),
+                    }
+                    self._debug_record('_download_elevation_data', 'local_success', {
+                        'local_file': candidates[0].name,
+                        'file_size': candidates[0].stat().st_size,
+                    })
                     return True
                 except Exception as _copy_err:
                     warnings.warn(f"Failed to copy local DEM tile {candidates[0].name}: {_copy_err}")
-            
+                    self._debug_record('_download_elevation_data', 'local_copy_error', {
+                        'error': str(_copy_err),
+                        'file': candidates[0].name,
+                    })
+
         except Exception as e:
             warnings.warn(f"Local DEM fallback failed: {e}")
+            self._debug_record('_download_elevation_data', 'local_error', {'error': str(e)})
         try:
-            self._last_debug_download = {'attempts': debug_attempts, 'region_used': list(map(float, region))}
+            self._last_debug_download = {
+                'attempts': debug_attempts,
+                'region_used': list(map(float, region)),
+                'final_fallback': 'failed',
+            }
         except Exception:
             pass
 
@@ -293,13 +380,16 @@ class SlopeDataCollector:
         Returns:
             Dictionary of terrain attributes
         """
+        self._debug_record('_load_dem_and_attributes', 'start', {'file_path': str(fp)})
         try:
             # Prefer rasterio to honor GDAL nodata; fallback to PIL
             arr: np.ndarray
             nodata_val: Optional[float] = None
+            reader = 'unknown'
             if RASTERIO_AVAILABLE:
                 with rio.open(fp) as ds:
                     arr = ds.read(1).astype(np.float32)
+                    reader = 'rasterio'
                     try:
                         nodata_val = ds.nodata
                     except Exception:
@@ -307,6 +397,17 @@ class SlopeDataCollector:
             else:
                 with Image.open(fp) as im:
                     arr = np.array(im).astype(np.float32)
+                    reader = 'pil'
+            self._debug_record('_load_dem_and_attributes', 'raw_read', {
+                'reader': reader,
+                'shape': list(arr.shape),
+                'dtype': str(arr.dtype),
+                'nodata': float(nodata_val) if nodata_val is not None else None,
+                'min': float(np.nanmin(arr)) if arr.size else None,
+                'max': float(np.nanmax(arr)) if arr.size else None,
+                'finite_count': int(np.isfinite(arr).sum()),
+                'total_pixels': int(arr.size),
+            })
             if nodata_val is not None:
                 arr = np.where(arr == nodata_val, np.nan, arr)
             # Also treat extreme negative sentinels as nodata
@@ -314,6 +415,15 @@ class SlopeDataCollector:
                 arr = np.where(arr <= -1e5, np.nan, arr)
             except Exception:
                 pass
+            try:
+                finite_ratio_pre = float(np.isfinite(arr).sum()) / float(arr.size)
+            except Exception:
+                finite_ratio_pre = None
+            self._debug_record('_load_dem_and_attributes', 'after_mask', {
+                'finite_ratio': finite_ratio_pre,
+                'min': float(np.nanmin(arr)) if arr.size else None,
+                'max': float(np.nanmax(arr)) if arr.size else None,
+            })
             # Replace remaining NaNs with local mean to avoid holes
             if not np.isfinite(arr).any():
                 arr = np.zeros_like(arr, dtype=np.float32)
@@ -327,15 +437,37 @@ class SlopeDataCollector:
                     raise RuntimeError("DEM content mostly nodata")
             except Exception:
                 pass
+            self._last_dem_read = {
+                'file_path': str(fp),
+                'reader': reader,
+                'nodata': float(nodata_val) if nodata_val is not None else None,
+                'finite_ratio_after_fill': float(np.isfinite(arr).sum()) / float(arr.size) if arr.size else None,
+                'min_after_fill': float(np.nanmin(arr)) if arr.size else None,
+                'max_after_fill': float(np.nanmax(arr)) if arr.size else None,
+            }
+            self._debug_record('_load_dem_and_attributes', 'after_fill', dict(self._last_dem_read))
             if RICHDEM_AVAILABLE:
                 no_data_marker = -9999.0
                 rd_input = np.where(np.isfinite(arr), arr, no_data_marker).astype(np.float32)
                 imarray_rd = rd.rdarray(rd_input, no_data=no_data_marker)
+                self._debug_record('_load_dem_and_attributes', 'richdem_ready', {
+                    'no_data_marker': -9999.0,
+                })
             else:
                 imarray_rd = arr
             attrs = self._compute_terrain_attributes(imarray_rd)
+            try:
+                self._debug_record('_load_dem_and_attributes', 'attributes', {
+                    'slope_min': float(np.nanmin(attrs.get('slope_degrees'))),
+                    'slope_max': float(np.nanmax(attrs.get('slope_degrees'))),
+                    'aspect_min': float(np.nanmin(attrs.get('aspect'))),
+                    'aspect_max': float(np.nanmax(attrs.get('aspect'))),
+                })
+            except Exception:
+                pass
             return attrs
         except Exception as e:
+            self._debug_record('_load_dem_and_attributes', 'error', {'error': str(e)})
             raise RuntimeError(f"Failed to load DEM and compute attributes: {e}")
 
     def _offset(self, lat: float, lon: float, metres: float = 10_000) -> List[float]:
@@ -397,12 +529,22 @@ class SlopeDataCollector:
         region_sizes_m = [2000, 10000, 20000]
 
         last_error: Optional[Exception] = None
+        self._debug_record('get_terrain_features_for_point', 'start', {
+            'lat': float(lat), 'lon': float(lon), 'output_dir': str(output_dir),
+            'region_sizes_m': list(map(int, region_sizes_m)),
+        })
         for metres in region_sizes_m:
             dem_file = Path(output_dir) / f"dem_{lat:.5f}_{lon:.5f}_{metres}.tif"
             try:
                 region = self._offset(lat, lon, metres=metres)
+                self._debug_record('get_terrain_features_for_point', 'attempt', {
+                    'metres': int(metres), 'dem_file': dem_file.name, 'region': list(map(float, region)),
+                })
                 if not self._download_elevation_data(region, str(dem_file), lat, lon):
                     last_error = RuntimeError(f"Failed to download DEM for point ({lat}, {lon}) at {metres} m window")
+                    self._debug_record('get_terrain_features_for_point', 'download_failed', {
+                        'metres': int(metres), 'dem_file': dem_file.name,
+                    })
                     continue
 
                 # Load DEM and compute attributes
@@ -442,6 +584,10 @@ class SlopeDataCollector:
                 # Clamp to valid bounds to handle edge/rounding cases
                 clamped_px = min(max(px, 0), w - 1)
                 clamped_py = min(max(py, 0), h - 1)
+                self._debug_record('get_terrain_features_for_point', 'pixel', {
+                    'metres': int(metres), 'dem_shape': (int(h), int(w)),
+                    'px_py_raw': (int(px), int(py)), 'px_py_clamped': (int(clamped_px), int(clamped_py)),
+                })
 
                 # Extract values at clamped pixel (safe)
                 features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
@@ -454,9 +600,11 @@ class SlopeDataCollector:
                         'slope_min': float(np.nanmin(attrs.get('slope_degrees'))),
                         'slope_max': float(np.nanmax(attrs.get('slope_degrees'))),
                         'region_m': int(metres),
+                    'value_at_pixel': {k: float(features.get(k, float('nan'))) for k in features.keys()},
                     }
                 except Exception:
                     self._last_debug_usgs = {'dem_file': str(dem_file.name)}
+                self._debug_record('get_terrain_features_for_point', 'success', dict(self._last_debug_usgs))
 
                 # Clean up
                 try:
@@ -468,6 +616,9 @@ class SlopeDataCollector:
             except Exception as e:
                 last_error = e
                 # Preserve DEM file for potential reuse by 3D renderer
+                self._debug_record('get_terrain_features_for_point', 'attempt_error', {
+                    'metres': int(metres), 'dem_file': dem_file.name, 'error': str(e),
+                })
                 continue
 
         # As a final fallback, return neutral/default terrain values instead of failing
@@ -817,6 +968,9 @@ class SlopeDataCollector:
         Returns (figure, resolution_label).
         """
         Path(output_dir).mkdir(exist_ok=True)
+        self._debug_record('build_interactive_3d', 'start', {
+            'lat': float(lat), 'lon': float(lon), 'output_dir': str(output_dir), 'half_side_m': int(half_side_m)
+        })
 
         # Helper: render from a DEM file path and a crop size
         def _render_from_path(path: Path, crop_half_m: int) -> Tuple[go.Figure, str]:
@@ -836,6 +990,13 @@ class SlopeDataCollector:
                         # Treat extreme negative sentinel as nodata
                         dem = np.where(dem <= -1e5, np.nan, dem)
                         gt = ds.GetGeoTransform()
+                        self._debug_record('build_interactive_3d', 'read_gdal', {
+                            'path': path.name,
+                            'shape': (int(dem.shape[0]), int(dem.shape[1])),
+                            'nodata': float(nodata_val) if 'nodata_val' in locals() and nodata_val is not None else None,
+                            'min': float(np.nanmin(dem)) if dem.size else None,
+                            'max': float(np.nanmax(dem)) if dem.size else None,
+                        })
                     else:
                         raise RuntimeError("GDAL not available")
                 except Exception:
@@ -852,6 +1013,12 @@ class SlopeDataCollector:
                     minx = lon - (dem.shape[1] * xres) / 2.0
                     maxy = lat - (dem.shape[0] * yres) / 2.0
                     gt = (minx, xres, 0.0, maxy, 0.0, yres)
+                    self._debug_record('build_interactive_3d', 'read_pil', {
+                        'path': path.name,
+                        'shape': (int(dem.shape[0]), int(dem.shape[1])),
+                        'min': float(np.nanmin(dem)) if dem.size else None,
+                        'max': float(np.nanmax(dem)) if dem.size else None,
+                    })
 
                 h, w = dem.shape
                 ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=crop_half_m)
@@ -898,6 +1065,16 @@ class SlopeDataCollector:
                 # If the cropped window is too small to render meaningfully, trigger a larger crop retry
                 if size_x < 3 or size_y < 3:
                     raise ValueError("DEM crop too small for 3D rendering")
+                self._debug_record('build_interactive_3d', 'crop_downsample', {
+                    'path': path.name,
+                    'crop_half_m': int(crop_half_m),
+                    'crop_shape_after_stride': (int(size_y), int(size_x)),
+                    'stride': int(stride),
+                    'dem_min': float(np.nanmin(dem_c)),
+                    'dem_max': float(np.nanmax(dem_c)),
+                    'slope_min': float(np.nanmin(slope_c)),
+                    'slope_max': float(np.nanmax(slope_c)),
+                })
 
                 # Build X/Y grids directly in meters using the requested crop size
                 size_y, size_x = dem_c.shape
@@ -941,6 +1118,7 @@ class SlopeDataCollector:
                         'dem_max': float(np.nanmax(dem_c)),
                         'slope_min': float(np.nanmin(slope_c)),
                         'slope_max': float(np.nanmax(slope_c)),
+                        'resolution_label': res_label,
                     }
                 except Exception:
                     self._last_debug_3d = {'dem_path': str(path.name)}
@@ -962,6 +1140,12 @@ class SlopeDataCollector:
         # 1) Reuse (if present)
         if reuse:
             try:
+                # Record reuse as a download debug entry
+                self._last_debug_download = {'url': 'reuse', 'file': reuse[0].name, 'path': str(reuse[0])}
+                self._debug_record('build_interactive_3d', 'reuse', {
+                    'reuse_file': reuse[0].name,
+                    'path': str(reuse[0]),
+                })
                 return _render_from_path(reuse[0], base_half)
             except Exception:
                 pass
@@ -971,6 +1155,9 @@ class SlopeDataCollector:
         if not fresh_path.exists():
             if not self._download_elevation_data(region, str(fresh_path), lat, lon):
                 raise RuntimeError(f"Failed to download DEM for interactive 3D at ({lat}, {lon})")
+        else:
+            # Even if exists, record as reuse-equivalent for transparency
+            self._debug_record('build_interactive_3d', 'fresh_exists', {'path': str(fresh_path.name)})
 
         try:
             return _render_from_path(fresh_path, base_half)

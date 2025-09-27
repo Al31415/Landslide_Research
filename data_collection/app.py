@@ -468,7 +468,10 @@ with col2:
                 collector = None
                 try:
                     from slope_data_collector import SlopeDataCollector
-                    collector = SlopeDataCollector()
+                    # Reuse a single collector instance across session so debug carries over
+                    if 'slope_collector' not in st.session_state:
+                        st.session_state.slope_collector = SlopeDataCollector()
+                    collector = st.session_state.slope_collector
                     with st.spinner("Building interactive 3D view (Plotly)..."):
                         fig_int, res_label = collector.build_interactive_3d(
                             lat=float(st.session_state.lat),
@@ -489,18 +492,27 @@ with col2:
                                 'lat': float(st.session_state.lat),
                                 'lon': float(st.session_state.lon),
                             })
+                            # Show high-level last states
                             if hasattr(collector, '_last_debug_download'):
-                                st.markdown("Download")
+                                st.markdown("Download (Last)")
                                 st.json(getattr(collector, '_last_debug_download'))
                             if hasattr(collector, '_last_debug_usgs'):
-                                st.markdown("USGS DEM")
+                                st.markdown("USGS DEM (Slope Feature)")
                                 st.json(getattr(collector, '_last_debug_usgs'))
-                            if hasattr(collector, '_last_debug_3d'):
-                                st.markdown("3D Renderer")
-                                st.json(getattr(collector, '_last_debug_3d'))
                             if hasattr(collector, '_last_dem_read'):
-                                st.markdown("DEM Read")
+                                st.markdown("DEM Read (Last)")
                                 st.json(getattr(collector, '_last_dem_read'))
+                            if hasattr(collector, '_last_debug_3d'):
+                                st.markdown("3D Renderer (Last)")
+                                st.json(getattr(collector, '_last_debug_3d'))
+                            # Full debug log with all calls
+                            if hasattr(collector, '_debug_log'):
+                                st.markdown("### Full Debug Log")
+                                try:
+                                    st.json(collector._debug_log)
+                                except Exception:
+                                    # Fallback pretty print
+                                    st.text(str(collector._debug_log))
                 except Exception:
                     pass
 
