@@ -493,64 +493,7 @@ with col2:
                         st.plotly_chart(fig_int, use_container_width=True)
                 except Exception as inter_err:
                     st.warning(f"Interactive 3D failed: {inter_err}")
-                # Always show diagnostics block (whether 3D rendered or not)
-                try:
-                    if collector is not None:
-                        with st.expander("Diagnostics", expanded=False):
-                            st.markdown("Selected Location")
-                            st.json({
-                                'lat': float(st.session_state.lat),
-                                'lon': float(st.session_state.lon),
-                            })
-                            # Environment versions (useful for visualization differences)
-                            try:
-                                import plotly, streamlit as _st
-                                st.markdown("### Versions")
-                                st.json({
-                                    'plotly': getattr(plotly, '__version__', 'unknown'),
-                                    'streamlit': getattr(_st, '__version__', 'unknown'),
-                                })
-                            except Exception:
-                                pass
-                            # Show high-level last states
-                            if hasattr(collector, '_last_debug_download'):
-                                st.markdown("Download (Last)")
-                                st.json(getattr(collector, '_last_debug_download'))
-                            if hasattr(collector, '_last_debug_usgs'):
-                                st.markdown("USGS DEM (Slope Feature)")
-                                st.json(getattr(collector, '_last_debug_usgs'))
-                            if hasattr(collector, '_last_dem_read'):
-                                st.markdown("DEM Read (Last)")
-                                st.json(getattr(collector, '_last_dem_read'))
-                            if hasattr(collector, '_last_debug_3d'):
-                                st.markdown("3D Renderer (Last)")
-                                _dbg3d = getattr(collector, '_last_debug_3d')
-                                st.json(_dbg3d)
-                                try:
-                                    html_path = _dbg3d.get('html_path') if isinstance(_dbg3d, dict) else None
-                                    if html_path and os.path.exists(html_path):
-                                        st.caption(f"Saved 3D HTML: {html_path}")
-                                        with open(html_path, 'r', encoding='utf-8') as _f:
-                                            _html = _f.read()
-                                        st.download_button(
-                                            label="Download 3D HTML",
-                                            data=_html,
-                                            file_name=os.path.basename(html_path),
-                                            mime="text/html",
-                                        )
-                                        components.html(_html, height=600, scrolling=True)
-                                except Exception as _emb_err:
-                                    st.caption(f"Preview unavailable: {_emb_err}")
-                            # Full debug log with all calls
-                            if hasattr(collector, '_debug_log'):
-                                st.markdown("### Full Debug Log")
-                                try:
-                                    st.json(collector._debug_log)
-                                except Exception:
-                                    # Fallback pretty print
-                                    st.text(str(collector._debug_log))
-                except Exception:
-                    pass
+                # Diagnostics removed to avoid refresh churn
 
                 # AI-Assisted Slope/Soil Summary (auto, uses OpenAI 4o if key present)
                 try:

@@ -1181,7 +1181,15 @@ class SlopeDataCollector:
                 html_path = None
                 try:
                     html_path = Path(output_dir) / f"interactive_3d_{lat:.5f}_{lon:.5f}.html"
-                    fig.write_html(str(html_path))
+                    # Use dark theme look with white axes/text
+                    fig_dark = fig.to_dict()
+                    # Update scene and font for HTML
+                    fig.update_layout(
+                        paper_bgcolor='black',
+                        plot_bgcolor='black',
+                        font=dict(color='white'),
+                    )
+                    fig.write_html(str(html_path), include_plotlyjs='cdn', full_html=True)
                 except Exception:
                     html_path = None
                 # Store debug info for callers
