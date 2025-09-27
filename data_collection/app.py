@@ -203,8 +203,12 @@ with col1:
         st.session_state.default_event_date = datetime(2025, 1, 15).date()
     date = st.date_input("Event Date", value=st.session_state.default_event_date)
     
-    # Compute button
+    # Compute button with persistent state so UI doesn't collapse on rerun
+    if 'run_active' not in st.session_state:
+        st.session_state.run_active = False
     run = st.button("Compute Prediction", type="primary")
+    if run:
+        st.session_state.run_active = True
 
     # Map interface - different for each input method
     st.subheader("Map View")
@@ -301,7 +305,7 @@ with col1:
 with col2:
     st.subheader("Prediction and Features")
     
-    if run:
+    if st.session_state.run_active:
         # Create progress tracking containers
         progress_container = st.container()
         results_container = st.container()
