@@ -472,6 +472,8 @@ with col2:
                     if 'slope_collector' not in st.session_state:
                         st.session_state.slope_collector = SlopeDataCollector()
                     collector = st.session_state.slope_collector
+                    # Optional: allow HTML renderer fallback for Plotly
+                    use_html_renderer = st.checkbox("Use HTML renderer for 3D (fallback)", value=True)
                     with st.spinner("Building interactive 3D view (Plotly)..."):
                         fig_int, res_label = collector.build_interactive_3d(
                             lat=float(st.session_state.lat),
@@ -480,7 +482,15 @@ with col2:
                         )
                     fig_int.update_layout(height=520)
                     st.info(f"Interactive 3D resolution used: {res_label}")
-                    st.plotly_chart(fig_int, use_container_width=True)
+                    if use_html_renderer:
+                        try:
+                            html_str = fig_int.to_html(full_html=False, include_plotlyjs='cdn')
+                            components.html(html_str, height=600, scrolling=True)
+                        except Exception as _html_err:
+                            st.warning(f"HTML renderer failed: {_html_err}. Falling back to streamlit plotly renderer.")
+                            st.plotly_chart(fig_int, use_container_width=True)
+                    else:
+                        st.plotly_chart(fig_int, use_container_width=True)
                 except Exception as inter_err:
                     st.warning(f"Interactive 3D failed: {inter_err}")
                 # Always show diagnostics block (whether 3D rendered or not)
@@ -492,6 +502,16 @@ with col2:
                                 'lat': float(st.session_state.lat),
                                 'lon': float(st.session_state.lon),
                             })
+                            # Environment versions (useful for visualization differences)
+                            try:
+                                import plotly, streamlit as _st
+                                st.markdown("### Versions")
+                                st.json({
+                                    'plotly': getattr(plotly, '__version__', 'unknown'),
+                                    'streamlit': getattr(_st, '__version__', 'unknown'),
+                                })
+                            except Exception:
+                                pass
                             # Show high-level last states
                             if hasattr(collector, '_last_debug_download'):
                                 st.markdown("Download (Last)")

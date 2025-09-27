@@ -1163,22 +1163,19 @@ class SlopeDataCollector:
                 # Explicit axis ranges and aspect to avoid collapsed view
                 zmin = float(np.nanmin(dem_c))
                 zmax = float(np.nanmax(dem_c))
-                fig.update_scenes(
-                    xaxis=dict(title='m East/West', range=[-crop_half_m, crop_half_m]),
-                    yaxis=dict(title='m North/South', range=[-crop_half_m, crop_half_m]),
-                    zaxis=dict(title='Elevation (m)', range=[zmin, zmax]),
+                scene_cfg = dict(
+                    xaxis=dict(title='m East/West', range=[-crop_half_m, crop_half_m], visible=True, showgrid=True, zeroline=False, showspikes=False),
+                    yaxis=dict(title='m North/South', range=[-crop_half_m, crop_half_m], visible=True, showgrid=True, zeroline=False, showspikes=False),
+                    zaxis=dict(title='Elevation (m)', range=[zmin, zmax], visible=True, showgrid=True, zeroline=False, showspikes=False),
                     aspectmode='data',
                 )
                 fig.update_layout(
                     margin=dict(l=0, r=0, b=0, t=30),
                     title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}",
                     scene_camera=dict(eye=dict(x=1.6, y=1.6, z=0.8)),
-                    scene=dict(
-                        xaxis=dict(visible=True, showgrid=True, zeroline=False, showspikes=False),
-                        yaxis=dict(visible=True, showgrid=True, zeroline=False, showspikes=False),
-                        zaxis=dict(visible=True, showgrid=True, zeroline=False, showspikes=False),
-                    ),
+                    scene=scene_cfg,
                     uirevision=True,
+                    template=None,
                 )
                 # Save an HTML snapshot for external inspection
                 html_path = None
@@ -1205,11 +1202,7 @@ class SlopeDataCollector:
                             'dem': int(np.isnan(dem_c).sum()),
                             'slope': int(np.isnan(slope_c).sum()),
                         },
-                        'scene_ranges': {
-                            'x': [-int(crop_half_m), int(crop_half_m)],
-                            'y': [-int(crop_half_m), int(crop_half_m)],
-                            'z': [zmin, zmax],
-                        },
+                        'scene': scene_cfg,
                         'camera_eye': {'x': 1.6, 'y': 1.6, 'z': 0.8},
                         'html_path': str(html_path) if html_path else None,
                     }
