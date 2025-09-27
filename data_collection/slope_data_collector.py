@@ -976,33 +976,57 @@ class SlopeDataCollector:
         def _render_from_path(path: Path, crop_half_m: int) -> Tuple[go.Figure, str]:
             ds = None
             try:
-                try:
-                    if GDAL_AVAILABLE:
-                        ds = gdal.Open(str(path))
-                        band = ds.GetRasterBand(1)
-                        dem = band.ReadAsArray().astype(np.float32)
+                # Prefer rasterio for correct georeferencing; then GDAL; finally PIL
+                if RASTERIO_AVAILABLE:
+                    with rio.open(str(path)) as ds_r:
+                        dem = ds_r.read(1).astype(np.float32)
+                        nodata_val = None
                         try:
-                            nodata_val = band.GetNoDataValue()
+                            nodata_val = ds_r.nodata
                             if nodata_val is not None:
                                 dem = np.where(dem == nodata_val, np.nan, dem)
                         except Exception:
                             pass
-                        # Treat extreme negative sentinel as nodata
+                        # Apply scale and offset if present
+                        try:
+                            if getattr(ds_r, 'scales', None) and ds_r.scales[0] not in (None, 1.0):
+                                dem = dem * float(ds_r.scales[0])
+                            if getattr(ds_r, 'offsets', None) and ds_r.offsets[0] not in (None, 0.0):
+                                dem = dem + float(ds_r.offsets[0])
+                        except Exception:
+                            pass
                         dem = np.where(dem <= -1e5, np.nan, dem)
-                        gt = ds.GetGeoTransform()
-                        self._debug_record('build_interactive_3d', 'read_gdal', {
+                        tr = ds_r.transform
+                        gt = (tr.c, tr.a, tr.b, tr.f, tr.d, tr.e)
+                        self._debug_record('build_interactive_3d', 'read_rasterio', {
                             'path': path.name,
                             'shape': (int(dem.shape[0]), int(dem.shape[1])),
-                            'nodata': float(nodata_val) if 'nodata_val' in locals() and nodata_val is not None else None,
+                            'nodata': float(nodata_val) if nodata_val is not None else None,
                             'min': float(np.nanmin(dem)) if dem.size else None,
                             'max': float(np.nanmax(dem)) if dem.size else None,
                         })
-                    else:
-                        raise RuntimeError("GDAL not available")
-                except Exception:
+                elif GDAL_AVAILABLE:
+                    ds = gdal.Open(str(path))
+                    band = ds.GetRasterBand(1)
+                    dem = band.ReadAsArray().astype(np.float32)
+                    try:
+                        nodata_val = band.GetNoDataValue()
+                        if nodata_val is not None:
+                            dem = np.where(dem == nodata_val, np.nan, dem)
+                    except Exception:
+                        pass
+                    dem = np.where(dem <= -1e5, np.nan, dem)
+                    gt = ds.GetGeoTransform()
+                    self._debug_record('build_interactive_3d', 'read_gdal', {
+                        'path': path.name,
+                        'shape': (int(dem.shape[0]), int(dem.shape[1])),
+                        'nodata': float(nodata_val) if 'nodata_val' in locals() and nodata_val is not None else None,
+                        'min': float(np.nanmin(dem)) if dem.size else None,
+                        'max': float(np.nanmax(dem)) if dem.size else None,
+                    })
+                else:
                     img = Image.open(str(path))
                     dem = np.array(img).astype(np.float32)
-                    # Treat extreme negative sentinel as nodata
                     dem = np.where(dem <= -1e5, np.nan, dem)
                     # Approx geotransform with ~10 m pixels
                     px_m = 10.0
