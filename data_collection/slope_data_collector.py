@@ -1187,9 +1187,20 @@ class SlopeDataCollector:
                     fig.update_layout(
                         paper_bgcolor='black',
                         plot_bgcolor='black',
-                        font=dict(color='white'),
+                        font=dict(color='white', family='Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Helvetica Neue, Arial, sans-serif'),
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        title=dict(pad=dict(t=6, b=6), x=0.02, xanchor='left')
                     )
-                    fig.write_html(str(html_path), include_plotlyjs='cdn', full_html=True)
+                    html_core = fig.to_html(full_html=False, include_plotlyjs='cdn', default_width='100%', default_height='560px', config={'displayModeBar': False})
+                    html_wrapped = (
+                        "<style>\n"
+                        "html,body{margin:0;padding:0;background:#000;}\n"
+                        ".plotly,.js-plotly-plot,.plot-container{margin:0!important;padding:0!important;}\n"
+                        ".modebar{display:none!important;}\n"
+                        "</style>\n"
+                        f"<div style='width:100%;height:100%;'>{html_core}</div>"
+                    )
+                    Path(html_path).write_text(html_wrapped, encoding='utf-8')
                 except Exception:
                     html_path = None
                 # Store debug info for callers

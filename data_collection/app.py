@@ -484,8 +484,24 @@ with col2:
                     st.info(f"Interactive 3D resolution used: {res_label}")
                     if use_html_renderer:
                         try:
-                            html_str = fig_int.to_html(full_html=False, include_plotlyjs='cdn')
-                            components.html(html_str, height=600, scrolling=True)
+                            # Generate Plotly HTML without outer <html> to embed cleanly
+                            html_core = fig_int.to_html(
+                                full_html=False,
+                                include_plotlyjs='cdn',
+                                default_width='100%',
+                                default_height='560px',
+                                config={'displayModeBar': False}
+                            )
+                            # Wrap with CSS to remove borders/margins and blend with app
+                            html_wrapped = (
+                                "<style>\n"
+                                "html,body{margin:0;padding:0;background:transparent;}\n"
+                                ".plotly,.js-plotly-plot,.plot-container{margin:0!important;padding:0!important;}\n"
+                                ".modebar{display:none!important;}\n"
+                                "</style>\n"
+                                f"<div style='width:100%;height:100%;'>{html_core}</div>"
+                            )
+                            components.html(html_wrapped, height=600, scrolling=False)
                         except Exception as _html_err:
                             st.warning(f"HTML renderer failed: {_html_err}. Falling back to streamlit plotly renderer.")
                             st.plotly_chart(fig_int, use_container_width=True)
