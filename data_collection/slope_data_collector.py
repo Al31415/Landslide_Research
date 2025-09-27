@@ -1100,8 +1100,24 @@ class SlopeDataCollector:
                     'slope_max': float(np.nanmax(slope_c)),
                 })
 
-                # Build X/Y grids directly in meters using the requested crop size
+                # Sanitize for Plotly and build X/Y grids directly in meters
                 size_y, size_x = dem_c.shape
+                # Ensure plain float arrays and no NaNs for Plotly
+                try:
+                    dem_c = dem_c.astype(float)
+                    slope_c = slope_c.astype(float)
+                except Exception:
+                    pass
+                try:
+                    # Replace any residual NaNs with local means
+                    if not np.isfinite(dem_c).all():
+                        dem_mean = float(np.nanmean(dem_c)) if np.isfinite(dem_c).any() else 0.0
+                        dem_c = np.where(np.isfinite(dem_c), dem_c, dem_mean)
+                    if not np.isfinite(slope_c).all():
+                        slope_mean = float(np.nanmean(slope_c)) if np.isfinite(slope_c).any() else 0.0
+                        slope_c = np.where(np.isfinite(slope_c), slope_c, slope_mean)
+                except Exception:
+                    pass
                 x_lin = np.linspace(-crop_half_m, crop_half_m, size_x)
                 y_lin = np.linspace(-crop_half_m, crop_half_m, size_y)
                 X, Y = np.meshgrid(x_lin, y_lin)
@@ -1124,12 +1140,43 @@ class SlopeDataCollector:
                 else:
                     center_z = float(np.nanmean(dem_c))
 
-                surface = go.Surface(x=X, y=Y, z=dem_c, surfacecolor=slope_c, colorscale='Plasma', colorbar=dict(title='Slope (°)'))
-                # Place marker at center of cropped window coordinates (0,0) in meter axes
-                marker = go.Scatter3d(x=[0], y=[0], z=[center_z], mode='markers', marker=dict(size=6, color='red'), name='Target')
+                # Clamp color range and ensure surface draws even with NaNs
+                surface = go.Surface(
+                    x=X,
+                    y=Y,
+                    z=dem_c,
+                    surfacecolor=slope_c,
+                    colorscale='Plasma',
+                    colorbar=dict(title='Slope (°)'),
+                    showscale=True,
+                    opacity=1.0,
+                    connectgaps=True,
+                    cmin=float(np.nanmin(slope_c)),
+                    cmax=float(np.nanmax(slope_c)),
+                )
+                # Place marker at center of cropped window coordinates (0,0) in meter axes; lift it slightly above surface
+                marker = go.Scatter3d(x=[0], y=[0], z=[center_z + 0.5], mode='markers', marker=dict(size=6, color='red'), name='Target')
                 fig = go.Figure(data=[surface, marker])
-                fig.update_scenes(xaxis_title='m East/West', yaxis_title='m North/South', zaxis_title='Elevation (m)')
-                fig.update_layout(margin=dict(l=0, r=0, b=0, t=30), title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}")
+                # Explicit axis ranges and aspect to avoid collapsed view
+                zmin = float(np.nanmin(dem_c))
+                zmax = float(np.nanmax(dem_c))
+                fig.update_scenes(
+                    xaxis=dict(title='m East/West', range=[-crop_half_m, crop_half_m]),
+                    yaxis=dict(title='m North/South', range=[-crop_half_m, crop_half_m]),
+                    zaxis=dict(title='Elevation (m)', range=[zmin, zmax]),
+                    aspectmode='data',
+                )
+                fig.update_layout(
+                    margin=dict(l=0, r=0, b=0, t=30),
+                    title=f"Interactive 3D Topography – lat {lat:.5f}, lon {lon:.5f}",
+                    scene_camera=dict(eye=dict(x=1.6, y=1.6, z=0.8)),
+                    scene=dict(
+                        xaxis=dict(visible=True, showgrid=True, zeroline=False, showspikes=False),
+                        yaxis=dict(visible=True, showgrid=True, zeroline=False, showspikes=False),
+                        zaxis=dict(visible=True, showgrid=True, zeroline=False, showspikes=False),
+                    ),
+                    uirevision=True,
+                )
                 # Store debug info for callers
                 try:
                     self._last_debug_3d = {
@@ -1143,6 +1190,11 @@ class SlopeDataCollector:
                         'slope_min': float(np.nanmin(slope_c)),
                         'slope_max': float(np.nanmax(slope_c)),
                         'resolution_label': res_label,
+                        'surface_points': int(size_x * size_y),
+                        'nan_counts': {
+                            'dem': int(np.isnan(dem_c).sum()),
+                            'slope': int(np.isnan(slope_c).sum()),
+                        },
                     }
                 except Exception:
                     self._last_debug_3d = {'dem_path': str(path.name)}
