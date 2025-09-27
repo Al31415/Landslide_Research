@@ -489,17 +489,17 @@ with col2:
                                 full_html=False,
                                 include_plotlyjs='cdn',
                                 default_width='100%',
-                                default_height='560px',
+                                default_height='600px',
                                 config={'displayModeBar': False}
                             )
                             # Wrap with CSS to remove borders/margins and blend with app
                             html_wrapped = (
                                 "<style>\n"
-                                "html,body{margin:0;padding:0;background:transparent;}\n"
+                                "html,body{margin:0;padding:0;background:transparent;height:100%;}\n"
                                 ".plotly,.js-plotly-plot,.plot-container{margin:0!important;padding:0!important;}\n"
                                 ".modebar{display:none!important;}\n"
                                 "</style>\n"
-                                f"<div style='width:100%;height:100%;'>{html_core}</div>"
+                                f"<div style='width:100%;height:600px;'>{html_core}</div>"
                             )
                             components.html(html_wrapped, height=600, scrolling=False)
                         except Exception as _html_err:
