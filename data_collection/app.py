@@ -472,13 +472,17 @@ with col2:
                     if 'slope_collector' not in st.session_state:
                         st.session_state.slope_collector = SlopeDataCollector()
                     collector = st.session_state.slope_collector
-                    # Optional: allow HTML renderer fallback for Plotly
-                    use_html_renderer = st.checkbox("Use HTML renderer for 3D (fallback)", value=True)
+                    # Controls for 3D rendering
+                    col_3d_ctrl1, col_3d_ctrl2 = st.columns([1, 1])
+                    with col_3d_ctrl1:
+                        crop_half_m = st.slider("3D window half-side (m)", min_value=100, max_value=1600, value=400, step=50)
+                    with col_3d_ctrl2:
+                        use_html_renderer = st.checkbox("Use HTML renderer for 3D (fallback)", value=True)
                     with st.spinner("Building interactive 3D view (Plotly)..."):
                         fig_int, res_label = collector.build_interactive_3d(
                             lat=float(st.session_state.lat),
                             lon=float(st.session_state.lon),
-                            half_side_m=400
+                            half_side_m=int(crop_half_m)
                         )
                     fig_int.update_layout(height=520)
                     st.info(f"Interactive 3D resolution used: {res_label}")

@@ -294,7 +294,7 @@ class SlopeDataCollector:
                         'local_file': candidates[0].name,
                         'file_size': candidates[0].stat().st_size,
                     })
-                return True
+                    return True
                 except Exception as _copy_err:
                     warnings.warn(f"Failed to copy local DEM tile {candidates[0].name}: {_copy_err}")
                     self._debug_record('_download_elevation_data', 'local_copy_error', {
