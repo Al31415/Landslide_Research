@@ -99,6 +99,184 @@ class SlopeDataCollector:
             'data': data,
         }
         self._debug_log['calls'].append(call_entry)
+        # Cap debug log to avoid unbounded memory growth
+        try:
+            if len(self._debug_log['calls']) > 300:
+                self._debug_log['calls'] = self._debug_log['calls'][-300:]
+        except Exception:
+            pass
+
+    def _read_cropped_dem_and_slope(self, dem_file: str, lat: float, lon: float,
+                                    half_side_m: int,
+                                    pad_px: int = 2) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Efficiently read a cropped DEM window around (lat, lon) and compute slope
+        on a slightly larger padded window so that the interior crop's slope is
+        identical to computing slope on the full raster (local operator).
+
+        Returns (dem_crop, slope_crop) where each is (H, W) covering +/- half_side_m
+        in meters around (lat, lon). The slope is in degrees.
+        """
+        self._debug_record('_read_cropped_dem_and_slope', 'start', {
+            'dem_file': str(dem_file), 'lat': float(lat), 'lon': float(lon),
+            'half_side_m': int(half_side_m), 'pad_px': int(pad_px),
+        })
+        # Target pixel radius for interior crop
+        pixels = int(max(1, round(half_side_m / float(self.ned_resolution_m))))
+
+        # Prefer rasterio for precise windowed IO
+        if RASTERIO_AVAILABLE:
+            try:
+                import rasterio as _rio_local  # type: ignore
+                from rasterio.windows import Window  # type: ignore
+                with _rio_local.open(str(dem_file)) as ds_r:
+                    tr = ds_r.transform
+                    # Build GDAL-like tuple for shared helpers
+                    gt = (tr.c, tr.a, tr.b, tr.f, tr.d, tr.e)
+                    w_full, h_full = ds_r.width, ds_r.height
+                    # Pixel center
+                    r_c, c_c = rio_rowcol(tr, lon, lat)
+                    px_c, py_c = int(c_c), int(r_c)
+                    # Window with padding for gradient locality
+                    pad = int(max(1, pad_px))
+                    xmin = max(0, px_c - (pixels + pad))
+                    xmax = min(w_full, px_c + (pixels + pad))
+                    ymin = max(0, py_c - (pixels + pad))
+                    ymax = min(h_full, py_c + (pixels + pad))
+                    win = Window(col_off=xmin, row_off=ymin,
+                                 width=max(1, xmax - xmin), height=max(1, ymax - ymin))
+                    dem_win = ds_r.read(1, window=win).astype(np.float32)
+                    nodata_val = None
+                    try:
+                        nodata_val = ds_r.nodata
+                        if nodata_val is not None:
+                            dem_win = np.where(dem_win == nodata_val, np.nan, dem_win)
+                    except Exception:
+                        pass
+                    # Sanitize extreme sentinels
+                    try:
+                        dem_win = np.where(dem_win <= -1e5, np.nan, dem_win)
+                    except Exception:
+                        pass
+                    # Replace NaNs with local mean to keep slope contiguous
+                    if not np.isfinite(dem_win).any():
+                        dem_win = np.zeros_like(dem_win, dtype=np.float32)
+                    else:
+                        mean_val = float(np.nanmean(dem_win))
+                        dem_win = np.where(np.isfinite(dem_win), dem_win, mean_val)
+
+                    # Compute slope on padded window
+                    if RICHDEM_AVAILABLE:
+                        no_data_marker = -9999.0
+                        rd_input = np.where(np.isfinite(dem_win), dem_win, no_data_marker).astype(np.float32)
+                        dem_rd = rd.rdarray(rd_input, no_data=no_data_marker)
+                        slope_win = rd.TerrainAttribute(dem_rd, "slope_degrees")
+                    else:
+                        dy, dx = np.gradient(dem_win)
+                        slope_win = np.rad2deg(np.arctan(np.sqrt(dx * dx + dy * dy)))
+
+                    # Remove padding to produce exact interior crop
+                    y0 = pad if (ymax - ymin) > (2 * pad) else 0
+                    x0 = pad if (xmax - xmin) > (2 * pad) else 0
+                    y1 = (ymax - ymin) - pad if (ymax - ymin) > (2 * pad) else (ymax - ymin)
+                    x1 = (xmax - xmin) - pad if (xmax - xmin) > (2 * pad) else (xmax - xmin)
+                    dem_crop = dem_win[y0:y1, x0:x1]
+                    slope_crop = slope_win[y0:y1, x0:x1]
+
+                    # If crop window too small, fall back to minimal center pixel
+                    if dem_crop.size == 0 or slope_crop.size == 0:
+                        dem_crop = dem_win
+                        slope_crop = slope_win
+
+                    # Final sanitize for downstream consumers
+                    dem_crop = dem_crop.astype(np.float32, copy=False)
+                    slope_crop = slope_crop.astype(np.float32, copy=False)
+                    self._debug_record('_read_cropped_dem_and_slope', 'done_rasterio', {
+                        'win_shape': (int(dem_win.shape[0]), int(dem_win.shape[1])),
+                        'crop_shape': (int(dem_crop.shape[0]), int(dem_crop.shape[1]))
+                    })
+                    return dem_crop, slope_crop
+            except Exception as e:
+                self._debug_record('_read_cropped_dem_and_slope', 'rasterio_error', {'error': str(e)})
+
+        # Fallbacks: GDAL → PIL
+        try:
+            if GDAL_AVAILABLE:
+                ds = gdal.Open(str(dem_file))
+                dem_full = ds.ReadAsArray().astype(np.float32)
+                gt = ds.GetGeoTransform()
+                h_full, w_full = dem_full.shape
+            else:
+                with Image.open(str(dem_file)) as im:
+                    dem_full = np.array(im).astype(np.float32)
+                # Approximate GeoTransform for ~10 m pixels
+                px_m = float(self.ned_resolution_m)
+                deg_per_m_lat = 1.0 / 110540.0
+                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
+                xres = px_m * deg_per_m_lon
+                yres = -px_m * deg_per_m_lat
+                minx = lon - (dem_full.shape[1] * xres) / 2.0
+                maxy = lat - (dem_full.shape[0] * yres) / 2.0
+                gt = (minx, xres, 0.0, maxy, 0.0, yres)
+                h_full, w_full = dem_full.shape
+
+            # Center pixel and padded bounds
+            px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
+            pad = int(max(1, pad_px))
+            xmin = max(0, px_c - (pixels + pad))
+            xmax = min(w_full, px_c + (pixels + pad))
+            ymin = max(0, py_c - (pixels + pad))
+            ymax = min(h_full, py_c + (pixels + pad))
+            dem_win = dem_full[ymin:ymax, xmin:xmax]
+            # Sanitize
+            try:
+                dem_win = np.where(dem_win <= -1e5, np.nan, dem_win)
+            except Exception:
+                pass
+            if not np.isfinite(dem_win).any():
+                dem_win = np.zeros_like(dem_win, dtype=np.float32)
+            else:
+                mean_val = float(np.nanmean(dem_win))
+                dem_win = np.where(np.isfinite(dem_win), dem_win, mean_val)
+
+            if RICHDEM_AVAILABLE:
+                no_data_marker = -9999.0
+                rd_input = np.where(np.isfinite(dem_win), dem_win, no_data_marker).astype(np.float32)
+                dem_rd = rd.rdarray(rd_input, no_data=no_data_marker)
+                slope_win = rd.TerrainAttribute(dem_rd, "slope_degrees")
+            else:
+                dy, dx = np.gradient(dem_win)
+                slope_win = np.rad2deg(np.arctan(np.sqrt(dx * dx + dy * dy)))
+
+            y0 = pad if (ymax - ymin) > (2 * pad) else 0
+            x0 = pad if (xmax - xmin) > (2 * pad) else 0
+            y1 = (ymax - ymin) - pad if (ymax - ymin) > (2 * pad) else (ymax - ymin)
+            x1 = (xmax - xmin) - pad if (xmax - xmin) > (2 * pad) else (xmax - xmin)
+            dem_crop = dem_win[y0:y1, x0:x1]
+            slope_crop = slope_win[y0:y1, x0:x1]
+            dem_crop = dem_crop.astype(np.float32, copy=False)
+            slope_crop = slope_crop.astype(np.float32, copy=False)
+            self._debug_record('_read_cropped_dem_and_slope', 'done_fallback', {
+                'win_shape': (int(dem_win.shape[0]), int(dem_win.shape[1])),
+                'crop_shape': (int(dem_crop.shape[0]), int(dem_crop.shape[1]))
+            })
+            return dem_crop, slope_crop
+        except Exception as e:
+            self._debug_record('_read_cropped_dem_and_slope', 'fallback_error', {'error': str(e)})
+            # As absolute fallback, compute via full path
+            attrs_full = self._load_dem_and_attributes(dem_file)
+            if GDAL_AVAILABLE:
+                ds = gdal.Open(str(dem_file))
+                dem_full = ds.ReadAsArray().astype(np.float32)
+                gt = ds.GetGeoTransform()
+                h_full, w_full = dem_full.shape
+            else:
+                with Image.open(str(dem_file)) as im:
+                    dem_full = np.array(im).astype(np.float32)
+                h_full, w_full = dem_full.shape
+            # Crop using existing helper
+            ys, xs = self._crop_window(gt, w_full, h_full, lat, lon, half_side_m=half_side_m)
+            return dem_full[ys, xs], attrs_full['slope_degrees'][ys, xs]
 
     def _download_elevation_data(self, region: List[float], out_path: str, lat: float, lon: float) -> bool:
         """
@@ -544,8 +722,35 @@ class SlopeDataCollector:
                     })
                     continue
 
-                # Load DEM and compute attributes
-                attrs = self._load_dem_and_attributes(str(dem_file))
+                # Compute attributes using a small padded window around the pixel to
+                # keep values identical to full-raster computation at the center.
+                # Use a modest window (e.g., 50 m) to bound memory.
+                window_half_m = max(self.ned_resolution_m * 5, 50)
+                dem_c, _slope_c = self._read_cropped_dem_and_slope(str(dem_file), lat, lon,
+                                                                   half_side_m=int(window_half_m), pad_px=2)
+                # Derive all attributes on the same window so center value matches
+                if RICHDEM_AVAILABLE:
+                    no_data_marker = -9999.0
+                    rd_input = np.where(np.isfinite(dem_c), dem_c, no_data_marker).astype(np.float32)
+                    dem_rd = rd.rdarray(rd_input, no_data=no_data_marker)
+                    attrs_w = {
+                        "slope_degrees": rd.TerrainAttribute(dem_rd, "slope_degrees"),
+                        "aspect": rd.TerrainAttribute(dem_rd, "aspect"),
+                        "planform_curvature": rd.TerrainAttribute(dem_rd, "planform_curvature"),
+                        "profile_curvature": rd.TerrainAttribute(dem_rd, "profile_curvature"),
+                    }
+                else:
+                    # Fallback: compute minimal set matching existing behavior
+                    dy, dx = np.gradient(dem_c)
+                    slope_rad = np.arctan(np.sqrt(dx * dx + dy * dy))
+                    slope_degrees = np.rad2deg(slope_rad)
+                    zero_like = np.zeros_like(slope_degrees)
+                    attrs_w = {
+                        "slope_degrees": slope_degrees,
+                        "aspect": zero_like,
+                        "planform_curvature": zero_like,
+                        "profile_curvature": zero_like,
+                    }
 
                 # Get pixel coordinates and image shape via available backend
                 gt = None
@@ -586,18 +791,27 @@ class SlopeDataCollector:
                     'px_py_raw': (int(px), int(py)), 'px_py_clamped': (int(clamped_px), int(clamped_py)),
                 })
 
-                # Extract values at clamped pixel (safe)
-                features = {k: float(v[clamped_py, clamped_px]) for k, v in attrs.items()}
+                # Extract values at clamped pixel using the window-based attributes.
+                # Align indices to center of window crop
+                wy, wx = attrs_w['slope_degrees'].shape
+                cy, cx = int(wy // 2), int(wx // 2)
+                try:
+                    features = {k: float(v[cy, cx]) for k, v in attrs_w.items()}
+                except Exception:
+                    # Fallback to clamped indices in case of odd windowing near tile edges
+                    cy = min(max(0, cy), wy - 1)
+                    cx = min(max(0, cx), wx - 1)
+                    features = {k: float(v[cy, cx]) for k, v in attrs_w.items()}
                 # Store debug details for callers (e.g., Streamlit UI)
                 try:
                     self._last_debug_usgs = {
                         'dem_file': str(dem_file.name),
                         'dem_shape': (int(h), int(w)),
                         'pixel_at': (int(clamped_py), int(clamped_px)),
-                        'slope_min': float(np.nanmin(attrs.get('slope_degrees'))),
-                        'slope_max': float(np.nanmax(attrs.get('slope_degrees'))),
+                        'slope_min': float(np.nanmin(attrs_w.get('slope_degrees'))),
+                        'slope_max': float(np.nanmax(attrs_w.get('slope_degrees'))),
                         'region_m': int(metres),
-                    'value_at_pixel': {k: float(features.get(k, float('nan'))) for k in features.keys()},
+                        'value_at_pixel': {k: float(features.get(k, float('nan'))) for k in features.keys()},
                     }
                 except Exception:
                     self._last_debug_usgs = {'dem_file': str(dem_file.name)}
@@ -703,41 +917,12 @@ class SlopeDataCollector:
     def _plot_dem(self, lat: float, lon: float, dem_file: str, 
                  save_plots: bool, output_dir: str) -> None:
         """Plot DEM elevation data."""
-        dem = None
-        gt = None
-        h = w = None
+        # Read only a small crop around the point to reduce memory
         try:
-            if GDAL_AVAILABLE:
-                ds = gdal.Open(dem_file)
-                dem = ds.ReadAsArray()
-                gt = ds.GetGeoTransform()
-                h, w = dem.shape
-            elif RASTERIO_AVAILABLE:
-                with rio.open(dem_file) as ds_r:
-                    dem = ds_r.read(1)
-                    tr = ds_r.transform
-                    # Convert affine to GDAL-like tuple
-                    gt = (tr.c, tr.a, tr.b, tr.f, tr.d, tr.e)
-                    h, w = dem.shape
-            else:
-                img = Image.open(dem_file)
-                dem = np.array(img)
-                h, w = dem.shape
-                # Approximate geotransform for cropping
-                px_m = float(self.ned_resolution_m)
-                deg_per_m_lat = 1.0 / 110540.0
-                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
-                xres = px_m * deg_per_m_lon
-                yres = -px_m * deg_per_m_lat
-                minx = lon - (w * xres) / 2.0
-                maxy = lat - (h * yres) / 2.0
-                gt = (minx, xres, 0.0, maxy, 0.0, yres)
+            dem_c, _slope_c = self._read_cropped_dem_and_slope(dem_file, lat, lon, half_side_m=200, pad_px=2)
+            cropped = dem_c
         except Exception as e:
             raise RuntimeError(f"Failed to read DEM for plotting: {e}")
-        
-        # Crop to window around point
-        ys, xs = self._crop_window(gt, w, h, lat, lon)
-        cropped = dem[ys, xs]
         
         # Create plot
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -766,44 +951,12 @@ class SlopeDataCollector:
     def _plot_slope_map(self, lat: float, lon: float, dem_file: str, 
                        save_plots: bool, output_dir: str) -> None:
         """Plot slope data."""
-        # Load DEM and compute attributes
-        attrs = self._load_dem_and_attributes(dem_file)
-        slope = attrs['slope_degrees']
-        
-        dem = None
-        gt = None
-        h = w = None
+        # Compute slope on a padded crop then display the interior crop
         try:
-            if GDAL_AVAILABLE:
-                ds = gdal.Open(dem_file)
-                dem = ds.ReadAsArray()
-                gt = ds.GetGeoTransform()
-                h, w = dem.shape
-            elif RASTERIO_AVAILABLE:
-                with rio.open(dem_file) as ds_r:
-                    dem = ds_r.read(1)
-                    tr = ds_r.transform
-                    gt = (tr.c, tr.a, tr.b, tr.f, tr.d, tr.e)
-                    h, w = dem.shape
-            else:
-                img = Image.open(dem_file)
-                dem = np.array(img)
-                h, w = dem.shape
-                # Approximate geotransform for cropping
-                px_m = float(self.ned_resolution_m)
-                deg_per_m_lat = 1.0 / 110540.0
-                deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat)) + 1e-9)
-                xres = px_m * deg_per_m_lon
-                yres = -px_m * deg_per_m_lat
-                minx = lon - (w * xres) / 2.0
-                maxy = lat - (h * yres) / 2.0
-                gt = (minx, xres, 0.0, maxy, 0.0, yres)
+            _dem_c, slope_c = self._read_cropped_dem_and_slope(dem_file, lat, lon, half_side_m=200, pad_px=2)
+            cropped = slope_c
         except Exception as e:
             raise RuntimeError(f"Failed to read DEM for slope plotting: {e}")
-        
-        # Crop to window around point
-        ys, xs = self._crop_window(gt, w, h, lat, lon)
-        cropped = slope[ys, xs]
         
         # Create plot
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -848,45 +1001,9 @@ class SlopeDataCollector:
             raise RuntimeError(f"Failed to download DEM for 3D plot at ({lat}, {lon})")
 
         try:
-            # Load raw DEM and attributes
-            # Try GDAL read; fallback to PIL if needed
-            dem = None
-            ds = None
-            try:
-                ds = gdal.Open(str(dem_file))
-                dem = ds.ReadAsArray()
-                gt = ds.GetGeoTransform()
-            except Exception:
-                with Image.open(str(dem_file)) as img:
-                    dem = np.array(img)
-                # Construct a best-effort GeoTransform centered at point with pixel size ~10m
-                # This is only used to compute a crop window around the center
-                px_size = 10.0
-                gt = (lon - (dem.shape[1] * px_size)/2.0, px_size, 0, lat + (dem.shape[0] * px_size)/2.0, 0, -px_size)
-            h, w = dem.shape
-            # Sanitize raw DEM for nodata sentinels and fill holes
-            try:
-                dem = dem.astype(np.float32)
-            except Exception:
-                pass
-            try:
-                dem = np.where(dem <= -1e5, np.nan, dem)
-            except Exception:
-                pass
-            if not np.isfinite(dem).any():
-                dem = np.zeros_like(dem, dtype=np.float32)
-            else:
-                mean_val_dem = float(np.nanmean(dem))
-                dem = np.where(np.isfinite(dem), dem, mean_val_dem)
-
-            # Compute slope on full DEM, then crop consistent windows
-            attrs = self._load_dem_and_attributes(str(dem_file))
-            slope = attrs['slope_degrees']
-
-            # Crop to window around the clicked point
-            ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=half_side_m)
-            dem_c = dem[ys, xs]
-            slope_c = slope[ys, xs]
+            # Read a padded crop and compute slope on it to reduce memory
+            dem_c, slope_c = self._read_cropped_dem_and_slope(str(dem_file), lat, lon,
+                                                              half_side_m=half_side_m, pad_px=2)
 
             # If crop too small/flat, try a larger crop once
             try:
@@ -894,9 +1011,10 @@ class SlopeDataCollector:
                 if size_x_chk < 3 or size_y_chk < 3 or (
                     (np.nanstd(dem_c) < 1e-6) and (np.nanstd(slope_c) < 1e-6)
                 ):
-                    ys, xs = self._crop_window(gt, w, h, lat, lon, half_side_m=max(half_side_m * 2, 800))
-                    dem_c = dem[ys, xs]
-                    slope_c = slope[ys, xs]
+                    # Re-read with a larger crop to ensure meaningful mesh
+                    larger_half = int(max(half_side_m * 2, 800))
+                    dem_c, slope_c = self._read_cropped_dem_and_slope(str(dem_file), lat, lon,
+                                                                      half_side_m=larger_half, pad_px=2)
             except Exception:
                 pass
 
@@ -921,12 +1039,7 @@ class SlopeDataCollector:
             face_colors = cmap(slope_norm)
 
             # Center elevation for the red marker
-            px_c, py_c = self._latlon_to_pixel(gt, lat, lon)
-            # Clamp to cropped region center (0,0)
-            if 0 <= px_c < w and 0 <= py_c < h:
-                center_z = float(dem[int(py_c), int(px_c)])
-            else:
-                center_z = float(np.nanmean(dem_c))
+            center_z = float(np.nanmean(dem_c))
 
             # Build figure
             fig = plt.figure(figsize=(10, 8))

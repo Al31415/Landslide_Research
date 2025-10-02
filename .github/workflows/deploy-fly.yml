@@ -39,6 +39,25 @@ jobs:
             done
             exit $DEPLOY_FAILED
           fi
+
+      - name: Ensure single region (ord only)
+        if: ${{ success() }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -e
+          flyctl regions set ord --app stability-predictor --yes || true
+
+      - name: Right-size existing machines (shared-1x, 2GB RAM, 1GB swap)
+        if: ${{ success() }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -e
+          MACHINES=$(flyctl machines list --app stability-predictor | awk 'NR>1 {print $1}')
+          for m in $MACHINES; do
+            flyctl machines update --app stability-predictor "$m" --vm-cpu-kind shared --cpus 1 --memory 2048 --swap-size-mb 1024
+          done
       
       - name: Health Check (poll until healthy)
         run: |
