@@ -56,7 +56,7 @@ jobs:
           set -e
           MACHINES=$(flyctl machines list --app stability-predictor | awk 'NR>1 {print $1}')
           for m in $MACHINES; do
-            flyctl machines update --app stability-predictor "$m" --vm-cpu-kind shared --cpus 1 --memory 2048 --swap-size-mb 1024
+            flyctl machines update --app stability-predictor "$m" --vm-cpu-kind shared --vm-cpus 1 --vm-memory 2048 --autostop stop
           done
       
       - name: Health Check (poll until healthy)
