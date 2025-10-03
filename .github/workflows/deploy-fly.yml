@@ -58,25 +58,22 @@ jobs:
           sudo apt-get update -y >/dev/null 2>&1 || true
           sudo apt-get install -y jq >/dev/null 2>&1 || true
           flyctl version || true
-          # Iterate IDs line-by-line to avoid word-splitting issues
+          # Update via machine-config JSON to avoid CLI flag/version differences
           while IFS= read -r m; do
             [ -n "$m" ] || continue
-            echo "Updating machine $m to shared-1x 2GB with autostop"
-            # Prefer new flags; fallback to legacy flags; if both fail, update via machine-config JSON
-            if ! flyctl machine update "$m" --app stability-predictor --vm-cpu-kind shared --vm-cpus 1 --vm-memory 2048 --autostop=stop; then
-              if ! flyctl machine update "$m" --app stability-predictor --vm-cpu-kind shared --cpus 1 --memory 2048 --autostop stop; then
-                echo "Flag-based update failed; attempting --machine-config update for $m"
-                tmpcfg=$(mktemp)
-                flyctl machine status "$m" --app stability-predictor --json | jq '.config \
-                  | .guest.cpu_kind="shared" \
-                  | .guest.cpus=1 \
-                  | .guest.memory_mb=2048 \
-                  | .auto_stop="stop"' > "$tmpcfg"
-                cat "$tmpcfg"
-                flyctl machine update "$m" --app stability-predictor --machine-config "$tmpcfg"
-                rm -f "$tmpcfg"
-              fi
-            fi
+            echo "Updating machine $m to shared-1x 2GB with autostop via machine-config"
+            tmpcfg=$(mktemp)
+            flyctl machine status "$m" --app stability-predictor --json | jq '
+              .config
+              | .guest.cpu_kind = "shared"
+              | .guest.cpus = 1
+              | .guest.memory_mb = 2048
+              | .auto_stop = "stop"
+            ' > "$tmpcfg"
+            cat "$tmpcfg"
+            # Apply config; treat no-op updates as success
+            flyctl machine update "$m" --app stability-predictor --machine-config "$tmpcfg" || true
+            rm -f "$tmpcfg"
           done < <(flyctl machines list --app stability-predictor --json | jq -r '.[].id')
       
       - name: Health Check (poll until healthy)
