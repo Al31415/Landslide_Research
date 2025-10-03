@@ -72,11 +72,11 @@ jobs:
         run: |
           set -euo pipefail
           APP="stability-predictor"
-          # Remove stopped machines to avoid flapping/cost
-          IDS_TO_REMOVE=$(flyctl machines list --app "$APP" --json | jq -r '.[] | select(.state=="stopped") | .id')
+          # Keep only the most recently updated machine; destroy others (regardless of state)
+          IDS_TO_REMOVE=$(flyctl machines list --app "$APP" --json | jq -r 'sort_by(.updated_at // .created_at) | .[0:-1] | .[].id')
           if [ -n "$IDS_TO_REMOVE" ]; then
             for id in $IDS_TO_REMOVE; do
-              echo "Destroying stopped machine $id"
+              echo "Destroying extra machine $id"
               flyctl machine destroy "$id" --app "$APP" --force --yes || true
             done
           fi
