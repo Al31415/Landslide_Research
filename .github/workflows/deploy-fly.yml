@@ -24,16 +24,13 @@ jobs:
         run: |
           set -e
           echo "Starting Fly.io deploy (verbose)"
-          flyctl deploy --remote-only --build-arg BUILDKIT_INLINE_CACHE=1 --verbose || DEPLOY_FAILED=$?
+          flyctl deploy --remote-only --build-arg BUILDKIT_INLINE_CACHE=1 --strategy immediate --verbose || DEPLOY_FAILED=$?
           if [ -n "$DEPLOY_FAILED" ]; then
             echo "Deploy failed with code $DEPLOY_FAILED. Dumping status and logs..."
             flyctl status --app stability-predictor || true
-            flyctl logs --app stability-predictor --no-tail --since 1h || true
-            # Attempt per-machine logs for deeper detail
-            MACHINES=$(flyctl machines list --app stability-predictor | awk 'NR>1 {print $1}')
-            for m in $MACHINES; do
-              echo "\n===== Logs for machine $m ====="
-              flyctl logs --app stability-predictor --machine "$m" --no-tail --since 1h || true
+            # Per-machine status (via API for reliable IDs)
+            IDS=$(flyctl api get "/v1/apps/stability-predictor/machines" | jq -r '.[]?.id')
+            for m in $IDS; do
               echo "\n===== Status for machine $m ====="
               flyctl machine status "$m" --app stability-predictor || true
             done
@@ -80,6 +77,20 @@ jobs:
             flyctl machine update "$m" --app "$APP" --machine-config "$tmpcfg" || true
             rm -f "$tmpcfg"
           done
+
+      - name: Prune extra machines (keep newest only)
+        if: ${{ success() }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          APP="stability-predictor"
+          # Keep only the most recently updated machine; destroy the rest
+          IDS_TO_REMOVE=$(flyctl api get "/v1/apps/$APP/machines" | jq -r 'sort_by(.updated_at // .created_at) | .[0:-1] | .[]?.id')
+          for id in $IDS_TO_REMOVE; do
+            echo "Destroying extra machine $id"
+            flyctl machine destroy "$id" --app "$APP" --force --yes || true
+          done
       
       - name: Health Check (poll until healthy)
         run: |
@@ -95,13 +106,10 @@ jobs:
             echo "Attempt $i/$ATTEMPTS not healthy yet; sleeping $SLEEP s..."
             sleep $SLEEP
           done
-          echo "Health check failed after $ATTEMPTS attempts. Dumping status and logs..."
+          echo "Health check failed after $ATTEMPTS attempts. Dumping status..."
           flyctl status --app stability-predictor || true
-          flyctl logs --app stability-predictor --no-tail --since 1h || true
-          MACHINES=$(flyctl machines list --app stability-predictor | awk 'NR>1 {print $1}')
-          for m in $MACHINES; do
-            echo "\n===== Logs for machine $m ====="
-            flyctl logs --app stability-predictor --machine "$m" --no-tail --since 1h || true
+          IDS=$(flyctl api get "/v1/apps/stability-predictor/machines" | jq -r '.[]?.id')
+          for m in $IDS; do
             echo "\n===== Status for machine $m ====="
             flyctl machine status "$m" --app stability-predictor || true
           done
