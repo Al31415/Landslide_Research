@@ -58,13 +58,18 @@ jobs:
           sudo apt-get update -y >/dev/null 2>&1 || true
           sudo apt-get install -y jq >/dev/null 2>&1 || true
           flyctl version || true
-          # Update via machine-config JSON to avoid CLI flag/version differences
-          while IFS= read -r m; do
+          APP="stability-predictor"
+          # List machine IDs via API (compatible across flyctl versions)
+          IDS=$(flyctl api get "/v1/apps/$APP/machines" | jq -r '.[]?.id')
+          if [ -z "$IDS" ]; then
+            IDS=$(flyctl machines list --app "$APP" --json | jq -r '.[].id')
+          fi
+          echo "$IDS" | while IFS= read -r m; do
             [ -n "$m" ] || continue
             echo "Updating machine $m to shared-1x 2GB with autostop via machine-config"
             tmpcfg=$(mktemp)
-            flyctl machine status "$m" --app stability-predictor --json | jq '
-              .config
+            flyctl api get "/v1/apps/$APP/machines/$m" | jq '
+              .config // {} 
               | .guest.cpu_kind = "shared"
               | .guest.cpus = 1
               | .guest.memory_mb = 2048
@@ -72,9 +77,9 @@ jobs:
             ' > "$tmpcfg"
             cat "$tmpcfg"
             # Apply config; treat no-op updates as success
-            flyctl machine update "$m" --app stability-predictor --machine-config "$tmpcfg" || true
+            flyctl machine update "$m" --app "$APP" --machine-config "$tmpcfg" || true
             rm -f "$tmpcfg"
-          done < <(flyctl machines list --app stability-predictor --json | jq -r '.[].id')
+          done
       
       - name: Health Check (poll until healthy)
         run: |
